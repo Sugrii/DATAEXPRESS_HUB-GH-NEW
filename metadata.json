@@ -1,0 +1,6 @@
+{
+  "name": "Ghana Telecom Hub & Agent Network",
+  "description": "Multi-network Ghana telecom bundle and airtime sales platform with sub-merchant agent portal, 10% commission engine, Firebase storage, and Paystack/Hubtel payment & delivery routing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

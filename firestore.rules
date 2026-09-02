@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Agents collection
+    match /agents/{agentId} {
+      allow read: if true;
+      allow write: if true;
+
+      // Agent orders subcollection
+      match /orders/{orderId} {
+        allow read: if true;
+        allow write: if true;
+      }
+
+      // Agent commissions subcollection
+      match /commissions/{commissionId} {
+        allow read: if true;
+        allow write: if true;
+      }
+
+      // Agent payouts subcollection
+      match /payouts/{payoutId} {
+        allow read: if true;
+        allow write: if true;
+      }
+    }
+
+    // Global Orders collection for real-time listener subscriptions
+    match /orders/{orderId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Global Payouts collection
+    match /payouts/{payoutId} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

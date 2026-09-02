@@ -1,0 +1,178 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+html.light, body.light {
+  color-scheme: light;
+}
+
+/* ==========================================================================
+   Light Mode Accessibility & Theme Overrides
+   ========================================================================== */
+
+.light {
+  --app-bg: #f8fafc;
+  --app-card-bg: #ffffff;
+  --app-card-border: #e2e8f0;
+  --app-text-main: #0f172a;
+  --app-text-muted: #64748b;
+}
+
+/* Backgrounds & Text */
+.light,
+.light body {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+.light .bg-slate-950 {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+.light .bg-slate-950\/80,
+.light .bg-slate-950\/60,
+.light .bg-slate-950\/90 {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+}
+
+.light .bg-slate-900,
+.light .bg-slate-900\/90,
+.light .bg-slate-900\/80,
+.light .bg-slate-900\/70,
+.light .bg-slate-900\/60,
+.light .bg-slate-900\/50,
+.light .bg-slate-900\/40 {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+.light .bg-slate-800,
+.light .bg-slate-800\/80,
+.light .bg-slate-800\/70,
+.light .bg-slate-800\/60,
+.light .bg-slate-800\/50,
+.light .bg-slate-800\/40 {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #1e293b !important;
+}
+
+.light .hover\:bg-slate-800:hover,
+.light .hover\:bg-slate-700:hover,
+.light .hover\:bg-slate-800\/60:hover {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* Border overrides */
+.light .border-slate-800,
+.light .border-slate-800\/80,
+.light .border-slate-800\/60,
+.light .border-slate-700,
+.light .border-slate-700\/80 {
+  border-color: #e2e8f0 !important;
+}
+
+/* Text Colors */
+.light .text-white {
+  color: #0f172a !important;
+}
+
+.light .text-slate-100 {
+  color: #0f172a !important;
+}
+
+.light .text-slate-200 {
+  color: #1e293b !important;
+}
+
+.light .text-slate-300 {
+  color: #334155 !important;
+}
+
+.light .text-slate-400 {
+  color: #64748b !important;
+}
+
+.light .text-slate-500 {
+  color: #64748b !important;
+}
+
+/* Header Specific Light Adjustments */
+.light header {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+}
+
+.light header .bg-slate-950\/80 {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Inputs & Form Elements */
+.light input:not([type="checkbox"]):not([type="radio"]),
+.light select,
+.light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+.light input:not([type="checkbox"]):not([type="radio"]):focus,
+.light select:focus,
+.light textarea:focus {
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 0 1px #f59e0b !important;
+}
+
+.light input::placeholder,
+.light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Modals & Dialogs */
+.light .fixed.inset-0.bg-black\/80,
+.light .fixed.inset-0.bg-slate-950\/80 {
+  background-color: rgba(15, 23, 42, 0.6) !important;
+}
+
+/* Cards & Elevated Containers */
+.light .shadow-2xl,
+.light .shadow-xl {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.07), 0 8px 10px -6px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Status Badges & Pills */
+.light .bg-emerald-500\/10 {
+  background-color: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+}
+
+.light .bg-amber-400\/10,
+.light .bg-amber-500\/10 {
+  background-color: #fffbeb !important;
+  border-color: #fde68a !important;
+}
+
+.light .bg-blue-500\/10 {
+  background-color: #eff6ff !important;
+  border-color: #bfdbfe !important;
+}
+
+.light .bg-rose-500\/10 {
+  background-color: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+}
+
+/* Footer */
+.light footer {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+  color: #475569 !important;
+}

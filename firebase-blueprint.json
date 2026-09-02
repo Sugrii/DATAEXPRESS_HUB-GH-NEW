@@ -1,0 +1,122 @@
+{
+  "entities": {
+    "SubMerchant": {
+      "title": "SubMerchant",
+      "description": "Telecom sub-merchant agent in Ghana earning 10% cash commissions on data and airtime sales.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "businessName": { "type": "string", "maxLength": 256 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "network": { "type": "string", "enum": ["MTN", "TELECEL", "AT"] },
+        "email": { "type": "string", "format": "email", "maxLength": 256 },
+        "pin": { "type": "string", "maxLength": 16 },
+        "slug": { "type": "string", "maxLength": 128 },
+        "commissionRate": { "type": "number" },
+        "totalCommissionEarned": { "type": "number" },
+        "availableCommissionBalance": { "type": "number" },
+        "totalSalesVolume": { "type": "number" },
+        "totalOrdersCount": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "suspended"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastActiveAt": { "type": "string", "format": "date-time" },
+        "customThemeColor": { "type": "string", "maxLength": 32 }
+      },
+      "required": ["id", "name", "businessName", "phone", "network", "email", "slug", "status", "createdAt"]
+    },
+    "TelecomOrder": {
+      "title": "TelecomOrder",
+      "description": "Ghana mobile telecom data or airtime transaction processed through Paystack and routed via Hubtel.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "agentId": { "type": "string", "maxLength": 128 },
+        "agentName": { "type": "string", "maxLength": 256 },
+        "agentPhone": { "type": "string", "maxLength": 32 },
+        "customerPhone": { "type": "string", "maxLength": 32 },
+        "network": { "type": "string", "enum": ["MTN", "TELECEL", "AT"] },
+        "productType": { "type": "string", "enum": ["DATA", "AIRTIME", "SPECIAL"] },
+        "packageId": { "type": "string", "maxLength": 128 },
+        "packageName": { "type": "string", "maxLength": 256 },
+        "dataAmount": { "type": "string", "maxLength": 64 },
+        "amount": { "type": "number" },
+        "commissionAmount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["PAYSTACK_MOMO", "PAYSTACK_CARD", "HUBTEL_DIRECT", "WALLET"] },
+        "paymentReference": { "type": "string", "maxLength": 256 },
+        "paymentStatus": { "type": "string", "enum": ["SUCCESS", "PENDING", "FAILED"] },
+        "routingGateway": { "type": "string", "maxLength": 64 },
+        "deliveryStatus": { "type": "string", "enum": ["DELIVERED", "PROCESSING", "FAILED"] },
+        "deliveryMessage": { "type": "string", "maxLength": 512 },
+        "hubtelTransactionId": { "type": "string", "maxLength": 256 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "customerPhone", "network", "productType", "amount", "deliveryStatus", "createdAt"]
+    },
+    "CommissionRecord": {
+      "title": "CommissionRecord",
+      "description": "Sub-merchant 10% commission earnings credit ledger.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "agentId": { "type": "string", "maxLength": 128 },
+        "agentName": { "type": "string", "maxLength": 256 },
+        "agentPhone": { "type": "string", "maxLength": 32 },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "orderAmount": { "type": "number" },
+        "commissionRate": { "type": "number" },
+        "commissionAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["CREDITED", "PAID_OUT", "PENDING"] },
+        "creditedAt": { "type": "string", "format": "date-time" },
+        "payoutReference": { "type": "string", "maxLength": 256 }
+      },
+      "required": ["id", "agentId", "orderId", "orderAmount", "commissionAmount", "status", "creditedAt"]
+    },
+    "PayoutRecord": {
+      "title": "PayoutRecord",
+      "description": "Commission cash payout withdrawal to agent MoMo wallet.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "agentId": { "type": "string", "maxLength": 128 },
+        "agentName": { "type": "string", "maxLength": 256 },
+        "agentPhone": { "type": "string", "maxLength": 32 },
+        "agentNetwork": { "type": "string", "enum": ["MTN", "TELECEL", "AT"] },
+        "amount": { "type": "number" },
+        "channel": { "type": "string", "enum": ["MTN_MOMO", "TELECEL_CASH", "AT_MONEY"] },
+        "status": { "type": "string", "enum": ["SUCCESS", "PENDING", "FAILED"] },
+        "reference": { "type": "string", "maxLength": 256 },
+        "hubtelTransactionId": { "type": "string", "maxLength": 256 },
+        "processedAt": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string", "maxLength": 512 }
+      },
+      "required": ["id", "agentId", "amount", "channel", "status", "reference", "processedAt"]
+    }
+  },
+  "firestore": {
+    "/agents/{agentId}": {
+      "schema": { "$ref": "SubMerchant" },
+      "description": "Collection of Ghana telecom sub-merchant agents."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "TelecomOrder" },
+      "description": "Global orders collection for real-time tracking and toast dispatch."
+    },
+    "/agents/{agentId}/orders/{orderId}": {
+      "schema": { "$ref": "TelecomOrder" },
+      "description": "Agent dedicated sub-collection of orders."
+    },
+    "/agents/{agentId}/commissions/{commissionId}": {
+      "schema": { "$ref": "CommissionRecord" },
+      "description": "Agent dedicated sub-collection of 10% commission records."
+    },
+    "/agents/{agentId}/payouts/{payoutId}": {
+      "schema": { "$ref": "PayoutRecord" },
+      "description": "Agent dedicated sub-collection of payouts."
+    },
+    "/payouts/{payoutId}": {
+      "schema": { "$ref": "PayoutRecord" },
+      "description": "Global commission payouts audit log."
+    }
+  }
+}
