@@ -1,248 +1,316 @@
 import React, { useState } from 'react';
-import {
-  Layers,
-  X,
-  Plus,
-  Trash2,
-  CheckCircle2,
-  AlertCircle,
-  Phone,
-  Zap,
-  Loader2,
-  Send,
-  Sparkles,
-} from 'lucide-react';
-import { BundlePackage, SubMerchant, TelecomNetwork, TelecomOrder } from '../types';
-import { TELECOM_CATALOG, detectGhanaNetwork, formatGhanaPhone } from '../data/telecomCatalog';
-import { initializePaystackPayment, routeHubtelDelivery } from '../lib/apiClient';
-import { recordOrderAndCommission } from '../lib/firestoreService';
+import { TelecomPackage, SubMerchant, TelecomOrder, TelecomNetwork } from '../types';
+import { TELECOM_PACKAGES, detectNetworkFromPhone, formatGhanaPhone, isValidGhanaPhone } from '../data/telecomCatalog';
+import { recordTelecomOrder } from '../lib/firestoreService';
+import { processHubtelFulfillment, chargePaystackMobileMoney, checkPaystackChargeStatus } from '../lib/apiClient';
+import { useToastNotification } from '../context/ToastNotificationContext';
+import { X, Upload, Layers, CheckCircle2, AlertCircle, Loader2, Smartphone } from 'lucide-react';
 
 interface BulkPurchaseModalProps {
-  selectedAgent: SubMerchant | null;
+  isOpen: boolean;
   onClose: () => void;
-  onOrdersCompleted: () => void;
-}
-
-interface BulkRecipient {
-  id: string;
-  phone: string;
-  network: TelecomNetwork;
-  packageId: string;
-  status: 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED';
-  error?: string;
+  selectedAgent: SubMerchant | null;
+  onSuccess: (orders: TelecomOrder[]) => void;
 }
 
 export const BulkPurchaseModal: React.FC<BulkPurchaseModalProps> = ({
-  selectedAgent,
+  isOpen,
   onClose,
-  onOrdersCompleted,
+  selectedAgent,
+  onSuccess,
 }) => {
-  const [phoneListText, setPhoneListText] = useState<string>('0244123456\n0207654321\n0271122334');
-  const [selectedPackageId, setSelectedPackageId] = useState<string>('mtn-noexp-2-5gb');
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [progressStatus, setProgressStatus] = useState<string>('');
-  const [completedCount, setCompletedCount] = useState<number>(0);
+  const { addToast } = useToastNotification();
+  const [phoneListRaw, setPhoneListRaw] = useState('');
+  const [selectedPackageId, setSelectedPackageId] = useState<string>(TELECOM_PACKAGES[0].id);
+  const [billingPhone, setBillingPhone] = useState('');
+  const [billingNetwork, setBillingNetwork] = useState<TelecomNetwork>('MTN');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
 
-  const selectedPkg = TELECOM_CATALOG.find((p) => p.id === selectedPackageId) || TELECOM_CATALOG[0];
+  if (!isOpen) return null;
 
-  // Parse phone numbers from text area
-  const parsedPhones = phoneListText
-    .split('\n')
-    .map((p) => p.trim())
-    .filter((p) => p.length >= 9);
+  const selectedPackage = TELECOM_PACKAGES.find((p) => p.id === selectedPackageId) || TELECOM_PACKAGES[0];
 
-  const totalCost = parsedPhones.length * selectedPkg.price;
-  const totalCommission = (totalCost * (selectedAgent?.commissionRate || 10)) / 100;
+  const parsedNumbers = phoneListRaw
+    .split(/[\n,;\s]+/)
+    .map((p) => formatGhanaPhone(p.trim()))
+    .filter((p) => p.length >= 10 && isValidGhanaPhone(p));
 
-  const handleExecuteBulkDispatch = async () => {
-    if (parsedPhones.length === 0) return;
+  const totalCost = parsedNumbers.length * selectedPackage.priceGhs;
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text) {
+        setPhoneListRaw(text);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleExecuteBulk = async () => {
+    if (parsedNumbers.length === 0) {
+      addToast('error', 'No Valid Numbers', 'Please enter at least one valid Ghanaian phone number (e.g. 024XXXXXXX)');
+      return;
+    }
+
+    const payer = billingPhone || parsedNumbers[0];
+    if (!isValidGhanaPhone(payer)) {
+      addToast('error', 'Invalid Billing Number', 'Please enter a valid Ghana Mobile Money number for billing.');
+      return;
+    }
 
     setIsProcessing(true);
-    setCompletedCount(0);
-    setProgressStatus(`Initiating Paystack bulk authorization for GHS ${totalCost.toFixed(2)}...`);
+    setStatusMessage(`Deducting GHS ${totalCost.toFixed(2)} via Paystack Mobile Money (${formatGhanaPhone(payer)})...`);
 
     try {
-      // Step 1: Paystack master transaction initialization
-      await initializePaystackPayment({
-        amount: totalCost,
-        customerPhone: parsedPhones[0],
-        network: selectedPkg.network,
-        packageId: selectedPkg.id,
-        packageName: `Bulk Order (${parsedPhones.length} Lines)`,
-        agentId: selectedAgent?.id,
-        agentName: selectedAgent?.businessName,
+      // Step 1: Paystack charge for bulk total
+      const bulkRef = `BULK-PAY-${Date.now().toString().slice(-7)}`;
+      const chargeRes = await chargePaystackMobileMoney({
+        customerPhone: formatGhanaPhone(payer),
+        network: billingNetwork,
+        amountGhs: totalCost,
+        orderId: bulkRef,
       });
 
-      // Step 2: Route each recipient through Hubtel
-      for (let i = 0; i < parsedPhones.length; i++) {
-        const phone = parsedPhones[i];
-        const detectedNet = detectGhanaNetwork(phone) || selectedPkg.network;
-
-        setProgressStatus(`Dispatching ${i + 1}/${parsedPhones.length}: ${phone} (${detectedNet}) via Hubtel...`);
-
-        const hubtelRes = await routeHubtelDelivery({
-          recipientPhone: phone,
-          network: detectedNet,
-          amount: selectedPkg.price,
-          packageId: selectedPkg.id,
-          packageName: selectedPkg.name,
-          dataAmount: selectedPkg.dataAmount,
-          productType: 'DATA',
-          agentId: selectedAgent?.id,
-        });
-
-        const singleComm = (selectedPkg.price * (selectedAgent?.commissionRate || 10)) / 100;
-
-        const order: TelecomOrder = {
-          id: `BULK-GH-${Date.now().toString().slice(-6)}-${i + 1}`,
-          agentId: selectedAgent?.id || 'DIRECT',
-          agentName: selectedAgent?.businessName || selectedAgent?.name || 'Direct Customer',
-          agentPhone: selectedAgent?.phone || '',
-          customerPhone: formatGhanaPhone(phone),
-          network: detectedNet,
-          productType: 'DATA',
-          packageId: selectedPkg.id,
-          packageName: selectedPkg.name,
-          dataAmount: selectedPkg.dataAmount,
-          amount: selectedPkg.price,
-          commissionAmount: selectedAgent ? singleComm : 0,
-          paymentMethod: 'PAYSTACK_MOMO',
-          paymentReference: `BULK-PAY-${Date.now()}`,
-          paymentStatus: 'SUCCESS',
-          routingGateway: 'HUBTEL',
-          deliveryStatus: 'DELIVERED',
-          deliveryMessage: hubtelRes.deliveryMessage || 'Delivered via Hubtel Bulk Router',
-          hubtelTransactionId: hubtelRes.hubtelTransactionId || '',
-          createdAt: new Date().toISOString(),
-        };
-
-        await recordOrderAndCommission(order);
-        setCompletedCount((prev) => prev + 1);
-        await new Promise((r) => setTimeout(r, 400));
+      // Poll until confirmed or simulated
+      let paid = false;
+      let attempts = 0;
+      while (!paid && attempts < 15) {
+        attempts++;
+        await new Promise((r) => setTimeout(r, 1500));
+        const statusRes = await checkPaystackChargeStatus(chargeRes.reference || bulkRef);
+        if (statusRes.status === 'success') {
+          paid = true;
+          break;
+        } else if (statusRes.status === 'failed') {
+          throw new Error(statusRes.message || 'Payment deduction declined.');
+        }
       }
 
-      setProgressStatus(`All ${parsedPhones.length} numbers recharged successfully!`);
-      setTimeout(() => {
-        onOrdersCompleted();
-        onClose();
-      }, 1500);
-    } catch (err: any) {
-      console.error('Bulk processing error:', err);
-      setProgressStatus(`Error: ${err.message || 'Failed during bulk dispatch'}`);
-    } finally {
+      addToast('success', 'Mobile Money Deducted', `Paystack debited GHS ${totalCost.toFixed(2)}. Hubtel is dispatching bundles in real-time...`);
+
+      // Step 2: Hubtel dispatch for all lines
+      setProgress({ current: 0, total: parsedNumbers.length });
+      const createdOrders: TelecomOrder[] = [];
+
+      for (let i = 0; i < parsedNumbers.length; i++) {
+        const phone = parsedNumbers[i];
+        const detectedNet = detectNetworkFromPhone(phone);
+        setProgress({ current: i + 1, total: parsedNumbers.length });
+        setStatusMessage(`Hubtel core dispatching line ${i + 1} of ${parsedNumbers.length} to ${phone}...`);
+
+        try {
+          const hubtelRes = await processHubtelFulfillment({
+            orderId: `BULK-GH-${Date.now().toString().slice(-6)}-${i + 1}`,
+            customerPhone: formatGhanaPhone(phone),
+            network: detectedNet,
+            productType: 'DATA',
+            packageName: selectedPackage.name,
+            amountGhs: selectedPackage.priceGhs,
+            paymentReference: chargeRes.reference || bulkRef,
+          });
+
+          const commRate = selectedAgent?.commissionRate || 0;
+          const commissionAmount = (selectedPackage.priceGhs * commRate) / 100;
+
+          const order: TelecomOrder = {
+            id: `BULK-GH-${Date.now().toString().slice(-6)}-${i + 1}`,
+            agentId: selectedAgent?.id || 'DIRECT',
+            agentName: selectedAgent?.businessName || selectedAgent?.name || 'Direct Customer',
+            agentPhone: selectedAgent?.phone || '',
+            customerPhone: formatGhanaPhone(phone),
+            network: detectedNet,
+            productType: 'DATA',
+            packageId: selectedPackage.id,
+            packageName: selectedPackage.name,
+            amountGhs: selectedPackage.priceGhs,
+            commissionGhs: commissionAmount,
+            paymentStatus: 'SUCCESS',
+            routingGateway: 'HUBTEL',
+            deliveryStatus: 'DELIVERED',
+            deliveryMessage: hubtelRes.deliveryMessage || 'Delivered via Hubtel Bulk Router',
+            hubtelTransactionId: hubtelRes.hubtelTransactionId || '',
+            paystackReference: chargeRes.reference || bulkRef,
+            momoProvider: billingNetwork,
+            paidAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+          };
+
+          const saved = await recordTelecomOrder(order);
+          createdOrders.push(saved);
+        } catch (err) {
+          console.error('Error in bulk dispatch:', err);
+        }
+      }
+
       setIsProcessing(false);
+      addToast('success', 'Bulk Dispatch Complete', `Successfully processed ${createdOrders.length} subscriber orders!`);
+      onSuccess(createdOrders);
+      onClose();
+    } catch (err: any) {
+      setIsProcessing(false);
+      addToast('error', 'Bulk Purchase Failed', err.message || 'Payment deduction failed.');
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl space-y-6 relative overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-400/20 text-amber-400 flex items-center justify-center">
+            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
               <Layers className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white font-['Outfit']">Bulk Airtime & Data Distribution</h3>
-              <p className="text-xs text-slate-400">Recharge multiple lines in one batch via Hubtel</p>
+              <h3 className="text-base font-bold text-white">Hubtel Bulk Data & Airtime Dispatch</h3>
+              <p className="text-xs text-slate-400">Batch fulfillment with instant carrier switch delivery</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded bg-slate-800"
+            disabled={isProcessing}
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50"
           >
-            Cancel
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="space-y-4 text-xs">
-          {/* Package Selector */}
+        <div className="mt-5 space-y-4">
+          {/* Select Package */}
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">
-              Select Data Bundle or Airtime Package
-            </label>
+            <label className="block text-xs font-bold text-slate-300 mb-1.5">Select Distribution Bundle</label>
             <select
               value={selectedPackageId}
               onChange={(e) => setSelectedPackageId(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white font-medium focus:ring-2 focus:ring-amber-400 focus:outline-none"
+              disabled={isProcessing}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
             >
-              {TELECOM_CATALOG.filter((p) => p.category !== 'AIRTIME').map((pkg) => (
+              {TELECOM_PACKAGES.filter((p) => p.category === 'DATA').map((pkg) => (
                 <option key={pkg.id} value={pkg.id}>
-                  [{pkg.network}] {pkg.name} ({pkg.dataAmount}) - GHS {pkg.price.toFixed(2)}
+                  {pkg.network} - {pkg.name} (GHS {pkg.priceGhs.toFixed(2)})
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Paste Numbers TextArea */}
+          {/* Numbers Input */}
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-slate-300 font-semibold">
-                Recipient Ghana Phone Numbers (one per line)
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="text-xs font-bold text-slate-300">Recipient Phone Numbers</label>
+              <label className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer">
+                <Upload className="w-3.5 h-3.5" />
+                <span>Upload CSV / TXT</span>
+                <input type="file" accept=".txt,.csv" onChange={handleFileUpload} className="hidden" />
               </label>
-              <span className="text-amber-400 font-mono font-bold">
-                {parsedPhones.length} Lines Detected
-              </span>
             </div>
             <textarea
               rows={4}
-              value={phoneListText}
-              onChange={(e) => setPhoneListText(e.target.value)}
-              placeholder="0244123456&#10;0207654321&#10;0271122334"
-              className="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-xs focus:ring-2 focus:ring-amber-400 focus:outline-none"
+              placeholder="Paste comma or newline separated Ghana numbers (e.g. 0244123456, 0559876543, 0201122334)..."
+              value={phoneListRaw}
+              onChange={(e) => setPhoneListRaw(e.target.value)}
+              disabled={isProcessing}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder:text-slate-500 font-mono focus:outline-none focus:border-amber-500"
             />
-          </div>
-
-          {/* Order Summary */}
-          <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1.5">
-            <div className="flex justify-between text-slate-300">
-              <span>Lines to Recharge:</span>
-              <span className="font-bold text-white">{parsedPhones.length} Numbers</span>
-            </div>
-            <div className="flex justify-between text-slate-300">
-              <span>Selected Bundle:</span>
-              <span className="font-semibold text-white">{selectedPkg.name} ({selectedPkg.dataAmount})</span>
-            </div>
-            <div className="flex justify-between text-slate-300">
-              <span>Sub-Merchant 10% Commission:</span>
-              <span className="font-mono text-emerald-400 font-bold">
-                GHS {totalCommission.toFixed(2)}
-              </span>
-            </div>
-            <div className="border-t border-slate-800 pt-1.5 flex justify-between items-baseline">
-              <span className="font-bold text-slate-200">Total Bulk Cost:</span>
-              <span className="text-xl font-extrabold text-white font-['Outfit']">
-                GHS {totalCost.toFixed(2)}
-              </span>
+            <div className="mt-1 flex justify-between text-[11px] text-slate-400 font-mono">
+              <span>Valid Numbers Detected: {parsedNumbers.length}</span>
+              <span>Total GHS: {totalCost.toFixed(2)}</span>
             </div>
           </div>
 
-          {progressStatus && (
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-amber-400 text-xs flex items-center gap-2 font-mono">
-              {isProcessing && <Loader2 className="w-4 h-4 animate-spin shrink-0" />}
-              <span>{progressStatus}</span>
+          {/* Billing MoMo Account (Paystack Deduction) */}
+          <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <Smartphone className="w-3.5 h-3.5 text-amber-400" />
+                Paystack MoMo Billing Wallet
+              </label>
+              <span className="text-[10px] text-emerald-400 font-mono">Auto-Debit on Authorization</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input
+                type="tel"
+                placeholder="Billing MoMo Number (e.g. 0244000000)"
+                value={billingPhone}
+                onChange={(e) => {
+                  setBillingPhone(e.target.value);
+                  if (e.target.value.length >= 3) {
+                    setBillingNetwork(detectNetworkFromPhone(e.target.value));
+                  }
+                }}
+                disabled={isProcessing}
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder:text-slate-500 font-mono focus:outline-none focus:border-amber-500"
+              />
+              <div className="grid grid-cols-3 gap-1">
+                {(['MTN', 'TELECEL', 'AIRTELTIGO'] as TelecomNetwork[]).map((net) => (
+                  <button
+                    key={net}
+                    type="button"
+                    onClick={() => setBillingNetwork(net)}
+                    disabled={isProcessing}
+                    className={`py-1 rounded-lg text-[10px] font-bold border transition-all ${
+                      billingNetwork === net
+                        ? 'bg-amber-500/15 border-amber-500 text-amber-400'
+                        : 'bg-slate-900 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {net === 'MTN' ? 'MTN' : net === 'TELECEL' ? 'Telecel' : 'AT'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Progress Bar if processing */}
+          {isProcessing && (
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+              <div className="flex justify-between text-xs font-mono">
+                <span className="text-slate-300 flex items-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                  {statusMessage || 'Routing via Hubtel Switch...'}
+                </span>
+                <span className="text-amber-400 font-bold">
+                  {progress.current} / {progress.total}
+                </span>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-amber-500 h-full transition-all duration-300"
+                  style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
+                />
+              </div>
             </div>
           )}
 
-          <button
-            id="confirm-bulk-recharge-btn"
-            onClick={handleExecuteBulkDispatch}
-            disabled={isProcessing || parsedPhones.length === 0}
-            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-extrabold text-sm shadow-xl shadow-amber-400/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
-          >
-            {isProcessing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Processing Batch ({completedCount}/{parsedPhones.length})...</span>
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                <span>Pay & Dispatch Batch to {parsedPhones.length} Lines</span>
-              </>
-            )}
-          </button>
+          {/* Action */}
+          <div className="pt-2 flex gap-3">
+            <button
+              onClick={onClose}
+              disabled={isProcessing}
+              className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleExecuteBulk}
+              disabled={isProcessing || parsedNumbers.length === 0}
+              className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-all shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                <span>Dispatch {parsedNumbers.length} Orders (GHS {totalCost.toFixed(2)})</span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

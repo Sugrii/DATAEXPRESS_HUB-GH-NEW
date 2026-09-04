@@ -1,15 +1,34 @@
 import React, { useState } from 'react';
-import {
-  PhoneCall,
-  Copy,
-  CheckCircle2,
-  ExternalLink,
-  Zap,
-  Smartphone,
-  Info,
-} from 'lucide-react';
+import { TelecomNetwork } from '../types';
+import { TELECOM_NETWORKS } from '../data/telecomCatalog';
+import { PhoneCall, Copy, Check, Smartphone, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
+
+interface UssdCode {
+  title: string;
+  code: string;
+  network: TelecomNetwork | 'ALL';
+  purpose: string;
+}
+
+const COMMON_USSD: UssdCode[] = [
+  { title: 'MTN Mobile Money Menu', code: '*170#', network: 'MTN', purpose: 'Transfer, Cash Out, Pay Bills, Approvals' },
+  { title: 'MTN Balance Check', code: '*124#', network: 'MTN', purpose: 'Main Airtime & Bonus Account balance' },
+  { title: 'MTN Mashup / Pulse', code: '*567#', network: 'MTN', purpose: 'Custom flexible voice & data bundles' },
+  { title: 'MTN Data Balance', code: '*138#', network: 'MTN', purpose: 'Check active data allowances and expiry' },
+
+  { title: 'Telecel Cash Menu', code: '*110#', network: 'TELECEL', purpose: 'Telecel Cash, Bank Transfers, Merchant Pay' },
+  { title: 'Telecel Balance Check', code: '*124#', network: 'TELECEL', purpose: 'Airtime balance query' },
+  { title: 'Telecel Made4U Bundles', code: '*530#', network: 'TELECEL', purpose: 'Discounted personalized offers' },
+
+  { title: 'AT Money Menu', code: '*110#', network: 'AIRTELTIGO', purpose: 'AT Mobile Money wallet services' },
+  { title: 'AT Balance Check', code: '*134#', network: 'AIRTELTIGO', purpose: 'Airtime and credit query' },
+  { title: 'AT Big Time Data', code: '*111#', network: 'AIRTELTIGO', purpose: 'No expiry data self-service menu' },
+
+  { title: 'Emergency Services', code: '112', network: 'ALL', purpose: 'National Police, Fire & Ambulance response' },
+];
 
 export const UssdHelper: React.FC = () => {
+  const [selectedNetwork, setSelectedNetwork] = useState<TelecomNetwork | 'ALL'>('ALL');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const handleCopy = (code: string) => {
@@ -18,116 +37,117 @@ export const UssdHelper: React.FC = () => {
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
-  const ussdGroups = [
-    {
-      network: 'MTN Ghana',
-      color: 'border-amber-400/40 bg-amber-950/20',
-      tagColor: 'bg-amber-400/20 text-amber-300',
-      codes: [
-        { code: '*170#', title: 'MTN Mobile Money (MoMo)', desc: 'Send money, cashout, pay bills & approve Paystack prompts' },
-        { code: '*138#', title: 'MTN Internet Bundles', desc: 'Browse Non-Expiry data, Flexi bundles & 4G/5G packs' },
-        { code: '*138*1#', title: 'MTN Midnight Special', desc: 'Activate heavy night downloads from 12 AM to 5 AM' },
-        { code: '*500#', title: 'MTN Just4U', desc: 'Personalized exclusive voice & data discount packages' },
-        { code: '*124#', title: 'Check Airtime & Data Balance', desc: 'Instant flash balance SMS notification' },
-      ],
-    },
-    {
-      network: 'Telecel Ghana (Vodafone)',
-      color: 'border-rose-500/40 bg-rose-950/20',
-      tagColor: 'bg-rose-500/20 text-rose-300',
-      codes: [
-        { code: '*110#', title: 'Telecel Cash', desc: 'Mobile Money wallet transfer, approval & withdrawals' },
-        { code: '*700#', title: 'Telecel Bossu & 2 Moorch', desc: 'Daily, weekly and heavy monthly internet packages' },
-        { code: '*151#', title: 'Telecel Red Loyalty', desc: 'Voice bundles, roaming and integrated voice/data' },
-        { code: '*124#', title: 'Balance Check', desc: 'Check main airtime, bonus and data quota' },
-      ],
-    },
-    {
-      network: 'AT Ghana (AirtelTigo)',
-      color: 'border-blue-500/40 bg-blue-950/20',
-      tagColor: 'bg-blue-500/20 text-blue-300',
-      codes: [
-        { code: '*110#', title: 'AT Money', desc: 'Wallet services, transfers and merchant payments' },
-        { code: '*111#', title: 'Big Time Data Bundles', desc: 'No-expiry data and Sika Kokoo monthly packs' },
-        { code: '*100#', title: 'AT Self Service & Balance', desc: 'SIM registration, Airtime & Data balance inquiry' },
-        { code: '*533#', title: 'AT Magic Voice', desc: 'Special call discount plans and combos' },
-      ],
-    },
-  ];
+  const filtered = selectedNetwork === 'ALL'
+    ? COMMON_USSD
+    : COMMON_USSD.filter((u) => u.network === selectedNetwork || u.network === 'ALL');
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Header */}
-      <div className="bg-slate-950/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-400 text-xs font-semibold">
-            <PhoneCall className="w-3.5 h-3.5" />
-            <span>Ghana Telecom Quick USSD Reference</span>
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <PhoneCall className="w-5 h-5 text-amber-400" />
+              Ghana Telecom Offline USSD Directory
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Direct shortcodes for balance verification, approvals, and carrier self-service.
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-['Outfit']">
-            USSD Codes Directory
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-300">
-            Quickly check balances, authorize Mobile Money prompts, or verify bundles on your phone with official shortcodes.
-          </p>
+
+          <div className="flex items-center gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs">
+            <button
+              onClick={() => setSelectedNetwork('ALL')}
+              className={`px-3 py-1 rounded-lg font-bold transition-colors ${
+                selectedNetwork === 'ALL' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setSelectedNetwork('MTN')}
+              className={`px-3 py-1 rounded-lg font-bold transition-colors ${
+                selectedNetwork === 'MTN' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              MTN
+            </button>
+            <button
+              onClick={() => setSelectedNetwork('TELECEL')}
+              className={`px-3 py-1 rounded-lg font-bold transition-colors ${
+                selectedNetwork === 'TELECEL' ? 'bg-red-500 text-white' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Telecel
+            </button>
+            <button
+              onClick={() => setSelectedNetwork('AIRTELTIGO')}
+              className={`px-3 py-1 rounded-lg font-bold transition-colors ${
+                selectedNetwork === 'AIRTELTIGO' ? 'bg-blue-500 text-white' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              AT
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* USSD Network Groups */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {ussdGroups.map((grp) => (
-          <div
-            key={grp.network}
-            className={`border rounded-3xl p-6 space-y-4 ${grp.color}`}
-          >
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="font-bold text-white text-base font-['Outfit']">{grp.network}</h3>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${grp.tagColor}`}>
-                Official Shortcodes
-              </span>
-            </div>
-
-            <div className="space-y-3">
-              {grp.codes.map((c) => (
-                <div
-                  key={c.code}
-                  className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-3.5 flex items-start justify-between gap-3 hover:border-slate-700 transition-all"
-                >
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-amber-400 text-sm">
-                        {c.code}
-                      </span>
-                      <span className="font-semibold text-white text-xs">{c.title}</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">{c.desc}</p>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => handleCopy(c.code)}
-                      title="Copy USSD Code"
-                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-amber-400 hover:text-slate-950 text-slate-300 transition-colors"
-                    >
-                      {copiedCode === c.code ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-                    <a
-                      href={`tel:${encodeURIComponent(c.code)}`}
-                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 text-slate-300 transition-colors"
-                      title="Dial USSD"
-                    >
-                      <PhoneCall className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-6">
+          {filtered.map((item) => (
+            <div
+              key={item.code + item.title}
+              className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-between gap-4"
+            >
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-slate-200">{item.title}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-slate-900 border border-slate-800 text-slate-400">
+                    {item.network}
+                  </span>
                 </div>
-              ))}
+                <p className="text-xs text-slate-400 mt-1">{item.purpose}</p>
+                <div className="mt-2 text-base font-black font-mono text-amber-400 tracking-wider">
+                  {item.code}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5 shrink-0">
+                <button
+                  onClick={() => handleCopy(item.code)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                  title="Copy USSD Code"
+                >
+                  {copiedCode === item.code ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+
+                <a
+                  href={`tel:${encodeURIComponent(item.code)}`}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold flex items-center gap-1.5 text-center justify-center border border-amber-500/30 transition-colors"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Dial</span>
+                </a>
+              </div>
             </div>
+          ))}
+        </div>
+
+        <div className="mt-6 p-4 rounded-xl bg-slate-950/80 border border-slate-800 flex items-start gap-3">
+          <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+          <div className="text-xs text-slate-300 leading-relaxed">
+            <span className="font-bold text-white">Security Notice: </span>
+            Never disclose your Mobile Money PIN code via phone calls or SMS. Hubtel and telecom operators will never ask for your PIN to complete airtime or data recharges.
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );

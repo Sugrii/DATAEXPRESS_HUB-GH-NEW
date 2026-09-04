@@ -2,121 +2,240 @@
   "entities": {
     "SubMerchant": {
       "title": "SubMerchant",
-      "description": "Telecom sub-merchant agent in Ghana earning 10% cash commissions on data and airtime sales.",
+      "description": "Registered telecom agent or reseller outlet earning commissions on bundles and airtime.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "name": { "type": "string", "maxLength": 128 },
-        "businessName": { "type": "string", "maxLength": 256 },
-        "phone": { "type": "string", "maxLength": 32 },
-        "network": { "type": "string", "enum": ["MTN", "TELECEL", "AT"] },
-        "email": { "type": "string", "format": "email", "maxLength": 256 },
-        "pin": { "type": "string", "maxLength": 16 },
-        "slug": { "type": "string", "maxLength": 128 },
-        "commissionRate": { "type": "number" },
-        "totalCommissionEarned": { "type": "number" },
-        "availableCommissionBalance": { "type": "number" },
-        "totalSalesVolume": { "type": "number" },
-        "totalOrdersCount": { "type": "number" },
-        "status": { "type": "string", "enum": ["active", "suspended"] },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "lastActiveAt": { "type": "string", "format": "date-time" },
-        "customThemeColor": { "type": "string", "maxLength": 32 }
+        "id": {
+          "type": "string",
+          "description": "Unique agent identifier e.g. AGT-ACC-01"
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the agent operator"
+        },
+        "businessName": {
+          "type": "string",
+          "description": "Business or outlet name"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Ghana phone number"
+        },
+        "email": {
+          "type": "string",
+          "description": "Agent contact email"
+        },
+        "momoNumber": {
+          "type": "string",
+          "description": "Mobile Money withdrawal phone number"
+        },
+        "momoNetwork": {
+          "type": "string",
+          "enum": ["MTN", "TELECEL", "AIRTELTIGO"],
+          "description": "Mobile Money wallet network"
+        },
+        "commissionRate": {
+          "type": "number",
+          "description": "Commission percentage (e.g. 8 for 8%)"
+        },
+        "totalCommissionEarned": {
+          "type": "number",
+          "description": "Total commission earned to date in GHS"
+        },
+        "availableCommissionBalance": {
+          "type": "number",
+          "description": "Available balance eligible for payout in GHS"
+        },
+        "totalSalesVolume": {
+          "type": "number",
+          "description": "Total sales volume facilitated in GHS"
+        },
+        "totalOrdersCount": {
+          "type": "number",
+          "description": "Count of successful orders processed"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "suspended", "pending"],
+          "description": "Current status of agent account"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of creation"
+        }
       },
-      "required": ["id", "name", "businessName", "phone", "network", "email", "slug", "status", "createdAt"]
+      "required": ["id", "name", "businessName", "phone", "commissionRate", "status", "createdAt"]
     },
     "TelecomOrder": {
       "title": "TelecomOrder",
-      "description": "Ghana mobile telecom data or airtime transaction processed through Paystack and routed via Hubtel.",
+      "description": "Purchased data bundle or airtime transaction.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "agentId": { "type": "string", "maxLength": 128 },
-        "agentName": { "type": "string", "maxLength": 256 },
-        "agentPhone": { "type": "string", "maxLength": 32 },
-        "customerPhone": { "type": "string", "maxLength": 32 },
-        "network": { "type": "string", "enum": ["MTN", "TELECEL", "AT"] },
-        "productType": { "type": "string", "enum": ["DATA", "AIRTIME", "SPECIAL"] },
-        "packageId": { "type": "string", "maxLength": 128 },
-        "packageName": { "type": "string", "maxLength": 256 },
-        "dataAmount": { "type": "string", "maxLength": 64 },
-        "amount": { "type": "number" },
-        "commissionAmount": { "type": "number" },
-        "paymentMethod": { "type": "string", "enum": ["PAYSTACK_MOMO", "PAYSTACK_CARD", "HUBTEL_DIRECT", "WALLET"] },
-        "paymentReference": { "type": "string", "maxLength": 256 },
-        "paymentStatus": { "type": "string", "enum": ["SUCCESS", "PENDING", "FAILED"] },
-        "routingGateway": { "type": "string", "maxLength": 64 },
-        "deliveryStatus": { "type": "string", "enum": ["DELIVERED", "PROCESSING", "FAILED"] },
-        "deliveryMessage": { "type": "string", "maxLength": 512 },
-        "hubtelTransactionId": { "type": "string", "maxLength": 256 },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "id": {
+          "type": "string",
+          "description": "Unique order ID e.g. ORD-GH-12345"
+        },
+        "customerPhone": {
+          "type": "string",
+          "description": "Recipient Ghana mobile phone number"
+        },
+        "network": {
+          "type": "string",
+          "enum": ["MTN", "TELECEL", "AIRTELTIGO"],
+          "description": "Telecom carrier"
+        },
+        "productType": {
+          "type": "string",
+          "enum": ["DATA", "AIRTIME"],
+          "description": "Product category"
+        },
+        "packageName": {
+          "type": "string",
+          "description": "Description of package purchased"
+        },
+        "amountGhs": {
+          "type": "number",
+          "description": "Order price in GHS"
+        },
+        "commissionGhs": {
+          "type": "number",
+          "description": "Attributed agent commission amount"
+        },
+        "agentId": {
+          "type": "string",
+          "description": "Referral agent ID or DIRECT"
+        },
+        "agentName": {
+          "type": "string",
+          "description": "Agent name or Direct Customer"
+        },
+        "agentPhone": {
+          "type": "string",
+          "description": "Agent phone number"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["COMPLETED", "PENDING", "FAILED", "RETRYING"],
+          "description": "Fulfillment status"
+        },
+        "deliveryMessage": {
+          "type": "string",
+          "description": "Gateway delivery status note"
+        },
+        "hubtelTransactionId": {
+          "type": "string",
+          "description": "Hubtel carrier reference ID"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of transaction"
+        }
       },
-      "required": ["id", "customerPhone", "network", "productType", "amount", "deliveryStatus", "createdAt"]
+      "required": ["id", "customerPhone", "network", "productType", "packageName", "amountGhs", "commissionGhs", "status", "createdAt"]
     },
     "CommissionRecord": {
       "title": "CommissionRecord",
-      "description": "Sub-merchant 10% commission earnings credit ledger.",
+      "description": "Granular commission ledger entry credited to an agent.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "agentId": { "type": "string", "maxLength": 128 },
-        "agentName": { "type": "string", "maxLength": 256 },
-        "agentPhone": { "type": "string", "maxLength": 32 },
-        "orderId": { "type": "string", "maxLength": 128 },
-        "orderAmount": { "type": "number" },
-        "commissionRate": { "type": "number" },
-        "commissionAmount": { "type": "number" },
-        "status": { "type": "string", "enum": ["CREDITED", "PAID_OUT", "PENDING"] },
-        "creditedAt": { "type": "string", "format": "date-time" },
-        "payoutReference": { "type": "string", "maxLength": 256 }
+        "id": {
+          "type": "string",
+          "description": "Commission ID e.g. COMM-ORD-123"
+        },
+        "orderId": {
+          "type": "string",
+          "description": "Associated order ID"
+        },
+        "agentId": {
+          "type": "string",
+          "description": "Credited agent ID"
+        },
+        "amountGhs": {
+          "type": "number",
+          "description": "Commission credited in GHS"
+        },
+        "orderTotalGhs": {
+          "type": "number",
+          "description": "Associated order total in GHS"
+        },
+        "ratePercent": {
+          "type": "number",
+          "description": "Commission rate applied"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of commission credit"
+        }
       },
-      "required": ["id", "agentId", "orderId", "orderAmount", "commissionAmount", "status", "creditedAt"]
+      "required": ["id", "orderId", "agentId", "amountGhs", "orderTotalGhs", "ratePercent", "createdAt"]
     },
     "PayoutRecord": {
       "title": "PayoutRecord",
-      "description": "Commission cash payout withdrawal to agent MoMo wallet.",
+      "description": "Mobile money withdrawal payout record for sub-merchant commission balance.",
       "type": "object",
       "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "agentId": { "type": "string", "maxLength": 128 },
-        "agentName": { "type": "string", "maxLength": 256 },
-        "agentPhone": { "type": "string", "maxLength": 32 },
-        "agentNetwork": { "type": "string", "enum": ["MTN", "TELECEL", "AT"] },
-        "amount": { "type": "number" },
-        "channel": { "type": "string", "enum": ["MTN_MOMO", "TELECEL_CASH", "AT_MONEY"] },
-        "status": { "type": "string", "enum": ["SUCCESS", "PENDING", "FAILED"] },
-        "reference": { "type": "string", "maxLength": 256 },
-        "hubtelTransactionId": { "type": "string", "maxLength": 256 },
-        "processedAt": { "type": "string", "format": "date-time" },
-        "notes": { "type": "string", "maxLength": 512 }
+        "id": {
+          "type": "string",
+          "description": "Payout reference ID e.g. PAYOUT-12345"
+        },
+        "agentId": {
+          "type": "string",
+          "description": "Recipient agent ID"
+        },
+        "amountGhs": {
+          "type": "number",
+          "description": "Withdrawn amount in GHS"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PAID", "PENDING", "FAILED"],
+          "description": "Payout settlement status"
+        },
+        "momoNumber": {
+          "type": "string",
+          "description": "Recipient Mobile Money phone number"
+        },
+        "momoNetwork": {
+          "type": "string",
+          "enum": ["MTN", "TELECEL", "AIRTELTIGO"],
+          "description": "Mobile Money network"
+        },
+        "requestedAt": {
+          "type": "string",
+          "description": "ISO timestamp of request"
+        },
+        "processedAt": {
+          "type": "string",
+          "description": "ISO timestamp of processing"
+        }
       },
-      "required": ["id", "agentId", "amount", "channel", "status", "reference", "processedAt"]
+      "required": ["id", "agentId", "amountGhs", "status", "momoNumber", "momoNetwork", "requestedAt"]
     }
   },
   "firestore": {
     "/agents/{agentId}": {
-      "schema": { "$ref": "SubMerchant" },
-      "description": "Collection of Ghana telecom sub-merchant agents."
-    },
-    "/orders/{orderId}": {
-      "schema": { "$ref": "TelecomOrder" },
-      "description": "Global orders collection for real-time tracking and toast dispatch."
+      "schema": "SubMerchant",
+      "description": "Master sub-merchant agent profile records"
     },
     "/agents/{agentId}/orders/{orderId}": {
-      "schema": { "$ref": "TelecomOrder" },
-      "description": "Agent dedicated sub-collection of orders."
+      "schema": "TelecomOrder",
+      "description": "Orders credited to this specific agent"
     },
     "/agents/{agentId}/commissions/{commissionId}": {
-      "schema": { "$ref": "CommissionRecord" },
-      "description": "Agent dedicated sub-collection of 10% commission records."
+      "schema": "CommissionRecord",
+      "description": "Commission ledger entries for this agent"
     },
     "/agents/{agentId}/payouts/{payoutId}": {
-      "schema": { "$ref": "PayoutRecord" },
-      "description": "Agent dedicated sub-collection of payouts."
+      "schema": "PayoutRecord",
+      "description": "Mobile money commission cashout records for this agent"
+    },
+    "/orders/{orderId}": {
+      "schema": "TelecomOrder",
+      "description": "Global telecom bundle and airtime orders"
     },
     "/payouts/{payoutId}": {
-      "schema": { "$ref": "PayoutRecord" },
-      "description": "Global commission payouts audit log."
+      "schema": "PayoutRecord",
+      "description": "Global commission cashout records"
     }
   }
 }

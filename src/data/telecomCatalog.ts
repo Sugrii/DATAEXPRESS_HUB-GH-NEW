@@ -1,349 +1,302 @@
-import { BundlePackage, TelecomNetwork } from '../types';
+import { TelecomNetwork, TelecomPackage } from '../types';
 
-export const GHANA_PREFIX_MAP: Record<string, TelecomNetwork> = {
-  // MTN Ghana
-  '024': 'MTN',
-  '054': 'MTN',
-  '055': 'MTN',
-  '059': 'MTN',
-  '025': 'MTN',
-  // Telecel Ghana (formerly Vodafone)
-  '020': 'TELECEL',
-  '050': 'TELECEL',
-  // AT Ghana (formerly AirtelTigo)
-  '027': 'AT',
-  '057': 'AT',
-  '026': 'AT',
-  '056': 'AT',
+export interface NetworkInfo {
+  id: TelecomNetwork;
+  name: string;
+  shortName: string;
+  primaryColor: string;
+  accentColor: string;
+  badgeBg: string;
+  badgeBorder: string;
+  badgeText: string;
+  ussdBalance: string;
+  ussdShare: string;
+  prefixes: string[];
+}
+
+export const TELECOM_NETWORKS: Record<TelecomNetwork, NetworkInfo> = {
+  MTN: {
+    id: 'MTN',
+    name: 'MTN Ghana',
+    shortName: 'MTN',
+    primaryColor: '#eab308', // amber-500
+    accentColor: '#ca8a04',
+    badgeBg: 'bg-amber-500/10',
+    badgeBorder: 'border-amber-500/30',
+    badgeText: 'text-amber-400',
+    ussdBalance: '*124#',
+    ussdShare: '*198#',
+    prefixes: ['024', '054', '055', '059', '025'],
+  },
+  TELECEL: {
+    id: 'TELECEL',
+    name: 'Telecel Ghana (Vodafone)',
+    shortName: 'Telecel',
+    primaryColor: '#ef4444', // red-500
+    accentColor: '#dc2626',
+    badgeBg: 'bg-red-500/10',
+    badgeBorder: 'border-red-500/30',
+    badgeText: 'text-red-400',
+    ussdBalance: '*124#',
+    ussdShare: '*110#',
+    prefixes: ['020', '050'],
+  },
+  AIRTELTIGO: {
+    id: 'AIRTELTIGO',
+    name: 'AT (AirtelTigo)',
+    shortName: 'AT',
+    primaryColor: '#3b82f6', // blue-500
+    accentColor: '#2563eb',
+    badgeBg: 'bg-blue-500/10',
+    badgeBorder: 'border-blue-500/30',
+    badgeText: 'text-blue-400',
+    ussdBalance: '*134#',
+    ussdShare: '*110#',
+    prefixes: ['027', '057', '026', '056'],
+  },
 };
 
-export function detectGhanaNetwork(phone: string): TelecomNetwork | null {
-  const clean = phone.replace(/[\s\-+]/g, '');
-  let localFormat = clean;
-  if (clean.startsWith('233')) {
-    localFormat = '0' + clean.slice(3);
-  }
-  if (localFormat.length >= 3) {
-    const prefix = localFormat.slice(0, 3);
-    if (GHANA_PREFIX_MAP[prefix]) {
-      return GHANA_PREFIX_MAP[prefix];
-    }
-  }
-  return null;
-}
-
-export function formatGhanaPhone(phone: string): string {
-  const clean = phone.replace(/[\s\-+]/g, '');
-  if (clean.startsWith('233') && clean.length === 12) {
-    return '0' + clean.slice(3);
-  }
-  return clean;
-}
-
-export const TELECOM_CATALOG: BundlePackage[] = [
-  // --- MTN GHANA ---
+export const TELECOM_PACKAGES: TelecomPackage[] = [
+  // MTN Data Bundles
   {
-    id: 'mtn-noexp-1gb',
+    id: 'mtn-data-1gb',
+    name: 'MTN 1GB Turbo Data',
     network: 'MTN',
-    name: 'MTN Non-Expiry 1GB',
-    category: 'NON_EXPIRY',
-    dataAmount: '1.0 GB',
-    price: 12.0,
-    validity: 'No Expiry',
-    description: 'Standard high-speed 4G+/5G Data with lifetime validity.',
-    popular: true,
-    hubtelBundleId: 'MTN_NOEXP_1GB',
-    ussdCode: '*138#',
+    category: 'DATA',
+    dataAmount: '1 GB',
+    validity: 'Non-Expiry',
+    priceGhs: 12.0,
+    originalPriceGhs: 14.0,
+    isPopular: false,
+    description: 'Direct fast delivery non-expiry data for MTN Ghana lines.',
   },
   {
-    id: 'mtn-noexp-2-5gb',
+    id: 'mtn-data-2.5gb',
+    name: 'MTN 2.5GB Turbo Data',
     network: 'MTN',
-    name: 'MTN Non-Expiry 2.5GB',
-    category: 'NON_EXPIRY',
+    category: 'DATA',
     dataAmount: '2.5 GB',
-    price: 25.0,
-    validity: 'No Expiry',
-    description: 'Best-selling personal data bundle with no expiry.',
-    popular: true,
-    hubtelBundleId: 'MTN_NOEXP_2_5GB',
-    ussdCode: '*138#',
+    validity: 'Non-Expiry',
+    priceGhs: 25.0,
+    originalPriceGhs: 28.0,
+    isPopular: true,
+    description: 'Best-selling personal bundle. No expiry, ultra-fast 4G/5G speeds.',
   },
   {
-    id: 'mtn-noexp-5gb',
+    id: 'mtn-data-5gb',
+    name: 'MTN 5GB Mega Data',
     network: 'MTN',
-    name: 'MTN Non-Expiry 5GB',
-    category: 'NON_EXPIRY',
-    dataAmount: '5.0 GB',
-    price: 45.0,
-    validity: 'No Expiry',
-    description: 'Perfect for regular streaming, work and social media.',
-    popular: true,
-    hubtelBundleId: 'MTN_NOEXP_5GB',
-    ussdCode: '*138#',
+    category: 'DATA',
+    dataAmount: '5 GB',
+    validity: 'Non-Expiry',
+    priceGhs: 45.0,
+    originalPriceGhs: 50.0,
+    isPopular: true,
+    description: 'Work & stream favorite. Non-expiry rollover on active SIM.',
   },
   {
-    id: 'mtn-noexp-10gb',
+    id: 'mtn-data-10gb',
+    name: 'MTN 10GB Power Data',
     network: 'MTN',
-    name: 'MTN Non-Expiry 10GB',
-    category: 'NON_EXPIRY',
-    dataAmount: '10.0 GB',
-    price: 85.0,
-    validity: 'No Expiry',
-    description: 'High capacity heavy internet bundle with zero expiration.',
-    popular: true,
-    hubtelBundleId: 'MTN_NOEXP_10GB',
-    ussdCode: '*138#',
+    category: 'DATA',
+    dataAmount: '10 GB',
+    validity: 'Non-Expiry',
+    priceGhs: 85.0,
+    originalPriceGhs: 95.0,
+    isPopular: false,
+    description: 'Heavy browsing, streaming & hotspot sharing.',
   },
   {
-    id: 'mtn-noexp-20gb',
+    id: 'mtn-data-20gb',
+    name: 'MTN 20GB Ultra Data',
     network: 'MTN',
-    name: 'MTN Non-Expiry 20GB',
-    category: 'NON_EXPIRY',
-    dataAmount: '20.0 GB',
-    price: 160.0,
-    validity: 'No Expiry',
-    description: 'Power user bundle for heavy video, downloads and gaming.',
-    hubtelBundleId: 'MTN_NOEXP_20GB',
-    ussdCode: '*138#',
+    category: 'DATA',
+    dataAmount: '20 GB',
+    validity: 'Non-Expiry',
+    priceGhs: 160.0,
+    originalPriceGhs: 180.0,
+    isPopular: false,
+    description: 'Sub-merchant favorite. Non-expiry direct recharge.',
   },
   {
-    id: 'mtn-noexp-50gb',
+    id: 'mtn-data-50gb',
+    name: 'MTN 50GB Business Bundle',
     network: 'MTN',
-    name: 'MTN Non-Expiry 50GB',
-    category: 'NON_EXPIRY',
-    dataAmount: '50.0 GB',
-    price: 360.0,
-    validity: 'No Expiry',
-    description: 'Bulk enterprise data bundle for family or office hotspots.',
-    hubtelBundleId: 'MTN_NOEXP_50GB',
-    ussdCode: '*138#',
-  },
-  {
-    id: 'mtn-turbonet-100gb',
-    network: 'MTN',
-    name: 'MTN TurboNet 100GB',
-    category: 'TURBONET',
-    dataAmount: '100.0 GB',
-    price: 450.0,
-    validity: '30 Days',
-    description: 'Ultra-fast home/office router 4G+ & 5G high speed package.',
-    hubtelBundleId: 'MTN_TURBO_100GB',
-    ussdCode: '*138*1#',
-  },
-  {
-    id: 'mtn-midnight-unlimited',
-    network: 'MTN',
-    name: 'MTN Midnight Special',
-    category: 'SPECIAL',
-    dataAmount: '7.5 GB',
-    price: 6.0,
-    validity: '12:00 AM - 5:00 AM',
-    description: 'Super night owl bundle for downloads and software updates.',
-    hubtelBundleId: 'MTN_MIDNIGHT',
-    ussdCode: '*138*1#',
-  },
-  {
-    id: 'mtn-airtime-flexi',
-    network: 'MTN',
-    name: 'MTN Flexi Airtime',
-    category: 'AIRTIME',
-    dataAmount: 'Direct Airtime',
-    price: 10.0,
-    validity: 'Standard',
-    description: 'Instant Airtime top-up for voice calls and SMS to all networks.',
-    hubtelBundleId: 'MTN_AIRTIME',
-    ussdCode: '*170#',
+    category: 'DATA',
+    dataAmount: '50 GB',
+    validity: 'Non-Expiry',
+    priceGhs: 375.0,
+    originalPriceGhs: 400.0,
+    isPopular: false,
+    description: 'Corporate and heavy work from home fiber-alternative.',
   },
 
-  // --- TELECEL GHANA (Formerly Vodafone) ---
+  // Telecel Data Bundles
   {
-    id: 'telecel-bossu-2gb',
+    id: 'tel-data-1.5gb',
+    name: 'Telecel 1.5GB Super',
     network: 'TELECEL',
-    name: 'Telecel Bossu 2GB Daily',
-    category: 'DAILY',
-    dataAmount: '2.0 GB',
-    price: 10.0,
-    validity: '24 Hours',
-    description: 'Daily Bossu bundle with extra 50 mins voice calls.',
-    popular: true,
-    hubtelBundleId: 'TELECEL_BOSSU_2GB',
-    ussdCode: '*110#',
+    category: 'DATA',
+    dataAmount: '1.5 GB',
+    validity: 'Non-Expiry',
+    priceGhs: 13.0,
+    originalPriceGhs: 15.0,
+    isPopular: false,
+    description: 'Fast non-expiry internet across Telecel 4G network.',
   },
   {
-    id: 'telecel-bossu-5gb',
+    id: 'tel-data-4gb',
+    name: 'Telecel 4GB Super Max',
     network: 'TELECEL',
-    name: 'Telecel Bossu 5GB Weekly',
-    category: 'WEEKLY',
-    dataAmount: '5.0 GB',
-    price: 25.0,
-    validity: '7 Days',
-    description: 'Weekly high-speed data with free on-net calls.',
-    popular: true,
-    hubtelBundleId: 'TELECEL_BOSSU_5GB',
-    ussdCode: '*110#',
+    category: 'DATA',
+    dataAmount: '4 GB',
+    validity: 'Non-Expiry',
+    priceGhs: 35.0,
+    originalPriceGhs: 40.0,
+    isPopular: true,
+    description: 'Customer choice for social media, YouTube and downloads.',
   },
   {
-    id: 'telecel-2moorch-15gb',
+    id: 'tel-data-10gb',
+    name: 'Telecel 10GB Enterprise',
     network: 'TELECEL',
-    name: 'Telecel 2 Moorch 15GB',
-    category: 'MONTHLY',
-    dataAmount: '15.0 GB',
-    price: 80.0,
-    validity: '30 Days',
-    description: 'Monthly unlimited social media + 15GB all-purpose data.',
-    popular: true,
-    hubtelBundleId: 'TELECEL_2MOORCH_15GB',
-    ussdCode: '*700#',
+    category: 'DATA',
+    dataAmount: '10 GB',
+    validity: 'Non-Expiry',
+    priceGhs: 80.0,
+    originalPriceGhs: 90.0,
+    isPopular: false,
+    description: 'High capacity data without expiry restrictions.',
   },
   {
-    id: 'telecel-jumbo-40gb',
+    id: 'tel-data-25gb',
+    name: 'Telecel 25GB Mega',
     network: 'TELECEL',
-    name: 'Telecel Jumbo 40GB',
-    category: 'MONTHLY',
-    dataAmount: '40.0 GB',
-    price: 180.0,
-    validity: '30 Days',
-    description: 'Heavy data pack for streaming Netflix, YouTube & TikTok.',
-    hubtelBundleId: 'TELECEL_JUMBO_40GB',
-    ussdCode: '*700#',
-  },
-  {
-    id: 'telecel-jumbo-100gb',
-    network: 'TELECEL',
-    name: 'Telecel Jumbo 100GB',
-    category: 'TURBONET',
-    dataAmount: '100.0 GB',
-    price: 400.0,
-    validity: '60 Days',
-    description: 'Mega family & MiFi router broadband package.',
-    hubtelBundleId: 'TELECEL_JUMBO_100GB',
-    ussdCode: '*700#',
-  },
-  {
-    id: 'telecel-airtime-flexi',
-    network: 'TELECEL',
-    name: 'Telecel Flexi Airtime',
-    category: 'AIRTIME',
-    dataAmount: 'Direct Airtime',
-    price: 10.0,
-    validity: 'Standard',
-    description: 'Instant Telecel Airtime recharge to your number.',
-    hubtelBundleId: 'TELECEL_AIRTIME',
-    ussdCode: '*110#',
+    category: 'DATA',
+    dataAmount: '25 GB',
+    validity: 'Non-Expiry',
+    priceGhs: 185.0,
+    originalPriceGhs: 210.0,
+    isPopular: false,
+    description: 'Direct Hubtel router provisioning for Telecel SIM cards.',
   },
 
-  // --- AT GHANA (Formerly AirtelTigo) ---
+  // AT / AirtelTigo Bundles
   {
-    id: 'at-bigtime-2gb',
-    network: 'AT',
-    name: 'AT Big Time 2GB (No Expiry)',
-    category: 'NON_EXPIRY',
-    dataAmount: '2.0 GB',
-    price: 12.0,
-    validity: 'No Expiry',
-    description: 'Original No-Expiry data with high download speeds.',
-    popular: true,
-    hubtelBundleId: 'AT_BIGTIME_2GB',
-    ussdCode: '*111#',
+    id: 'at-data-2gb',
+    name: 'AT Big Time 2GB',
+    network: 'AIRTELTIGO',
+    category: 'DATA',
+    dataAmount: '2 GB',
+    validity: 'Non-Expiry',
+    priceGhs: 14.0,
+    originalPriceGhs: 16.0,
+    isPopular: false,
+    description: 'AT Big Time Data that does not expire. Pure value.',
   },
   {
-    id: 'at-bigtime-6gb',
-    network: 'AT',
-    name: 'AT Big Time 6GB (No Expiry)',
-    category: 'NON_EXPIRY',
-    dataAmount: '6.0 GB',
-    price: 30.0,
-    validity: 'No Expiry',
-    description: 'High value data bundle with zero expiration date.',
-    popular: true,
-    hubtelBundleId: 'AT_BIGTIME_6GB',
-    ussdCode: '*111#',
+    id: 'at-data-6gb',
+    name: 'AT Big Time 6GB',
+    network: 'AIRTELTIGO',
+    category: 'DATA',
+    dataAmount: '6 GB',
+    validity: 'Non-Expiry',
+    priceGhs: 40.0,
+    originalPriceGhs: 46.0,
+    isPopular: true,
+    description: 'Super value bundle for AT subscribers with non-expiry guarantee.',
   },
   {
-    id: 'at-sika-15gb',
-    network: 'AT',
-    name: 'AT Sika Kokoo 15GB',
-    category: 'MONTHLY',
-    dataAmount: '15.0 GB',
-    price: 65.0,
-    validity: '30 Days',
-    description: 'Economic value pack for students and remote workers.',
-    popular: true,
-    hubtelBundleId: 'AT_SIKA_15GB',
-    ussdCode: '*111#',
+    id: 'at-data-15gb',
+    name: 'AT Big Time 15GB',
+    network: 'AIRTELTIGO',
+    category: 'DATA',
+    dataAmount: '15 GB',
+    validity: 'Non-Expiry',
+    priceGhs: 95.0,
+    originalPriceGhs: 110.0,
+    isPopular: false,
+    description: 'High volume non-expiry data for heavy AT users.',
   },
+
+  // Airtime Top-Ups (All Networks)
   {
-    id: 'at-sika-35gb',
-    network: 'AT',
-    name: 'AT Sika Kokoo 35GB',
-    category: 'MONTHLY',
-    dataAmount: '35.0 GB',
-    price: 130.0,
-    validity: '30 Days',
-    description: 'Generous monthly data quota for intense internet usage.',
-    hubtelBundleId: 'AT_SIKA_35GB',
-    ussdCode: '*111#',
-  },
-  {
-    id: 'at-airtime-flexi',
-    network: 'AT',
-    name: 'AT Flexi Airtime',
+    id: 'airtime-10',
+    name: 'GHS 10 Airtime Voucher',
+    network: 'MTN',
     category: 'AIRTIME',
-    dataAmount: 'Direct Airtime',
-    price: 10.0,
-    validity: 'Standard',
-    description: 'Instant AT Money & Airtime direct top-up to subscriber.',
-    hubtelBundleId: 'AT_AIRTIME',
-    ussdCode: '*100#',
+    airtimeAmount: 'GHS 10.00',
+    validity: 'Instant Delivery',
+    priceGhs: 10.0,
+    isPopular: true,
+    description: 'Instant recharge direct to balance for calls and SMS.',
+  },
+  {
+    id: 'airtime-20',
+    name: 'GHS 20 Airtime Voucher',
+    network: 'MTN',
+    category: 'AIRTIME',
+    airtimeAmount: 'GHS 20.00',
+    validity: 'Instant Delivery',
+    priceGhs: 20.0,
+    isPopular: true,
+    description: 'Instant recharge direct to balance for calls and SMS.',
+  },
+  {
+    id: 'airtime-50',
+    name: 'GHS 50 Airtime Voucher',
+    network: 'MTN',
+    category: 'AIRTIME',
+    airtimeAmount: 'GHS 50.00',
+    validity: 'Instant Delivery',
+    priceGhs: 50.0,
+    isPopular: false,
+    description: 'Instant recharge direct to balance for calls and SMS.',
+  },
+  {
+    id: 'airtime-100',
+    name: 'GHS 100 Airtime Voucher',
+    network: 'MTN',
+    category: 'AIRTIME',
+    airtimeAmount: 'GHS 100.00',
+    validity: 'Instant Delivery',
+    priceGhs: 100.0,
+    isPopular: false,
+    description: 'Bulk recharge for heavy voice and emergency usage.',
   },
 ];
 
-export const NETWORK_THEMES: Record<TelecomNetwork, {
-  name: string;
-  badge: string;
-  primaryBg: string;
-  secondaryBg: string;
-  borderColor: string;
-  textColor: string;
-  accentColor: string;
-  hoverBg: string;
-  tagline: string;
-  momoName: string;
-}> = {
-  MTN: {
-    name: 'MTN Ghana',
-    badge: 'Everywhere You Go',
-    primaryBg: 'bg-amber-400',
-    secondaryBg: 'bg-amber-950/40',
-    borderColor: 'border-amber-400/40',
-    textColor: 'text-amber-400',
-    accentColor: '#fbbf24',
-    hoverBg: 'hover:bg-amber-400/10',
-    tagline: 'Ghana\'s fastest 4G+/5G network',
-    momoName: 'MTN MoMo',
-  },
-  TELECEL: {
-    name: 'Telecel Ghana',
-    badge: 'Connecting More',
-    primaryBg: 'bg-rose-600',
-    secondaryBg: 'bg-rose-950/40',
-    borderColor: 'border-rose-500/40',
-    textColor: 'text-rose-400',
-    accentColor: '#e11d48',
-    hoverBg: 'hover:bg-rose-600/10',
-    tagline: 'Reliable fiber-speed connectivity',
-    momoName: 'Telecel Cash',
-  },
-  AT: {
-    name: 'AT Ghana',
-    badge: 'Life is Simple',
-    primaryBg: 'bg-blue-600',
-    secondaryBg: 'bg-blue-950/40',
-    borderColor: 'border-blue-500/40',
-    textColor: 'text-blue-400',
-    accentColor: '#2563eb',
-    hoverBg: 'hover:bg-blue-600/10',
-    tagline: 'Affordable data with no expiry',
-    momoName: 'AT Money',
-  },
-};
+export function detectNetworkFromPhone(phone: string): TelecomNetwork {
+  const cleaned = phone.replace(/[^0-9]/g, '');
+  let prefix = '';
+
+  if (cleaned.startsWith('233') && cleaned.length >= 5) {
+    prefix = '0' + cleaned.substring(3, 5);
+  } else if (cleaned.startsWith('0') && cleaned.length >= 3) {
+    prefix = cleaned.substring(0, 3);
+  }
+
+  for (const net of Object.values(TELECOM_NETWORKS)) {
+    if (net.prefixes.includes(prefix)) {
+      return net.id;
+    }
+  }
+
+  return 'MTN'; // Default fallback
+}
+
+export function formatGhanaPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.startsWith('233') && digits.length === 12) {
+    return '0' + digits.substring(3);
+  }
+  if (digits.length === 9) {
+    return '0' + digits;
+  }
+  return digits;
+}
+
+export function isValidGhanaPhone(phone: string): boolean {
+  const formatted = formatGhanaPhone(phone);
+  return /^0[25][0-9]{8}$/.test(formatted);
+}

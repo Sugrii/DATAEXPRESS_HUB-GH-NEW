@@ -1,235 +1,197 @@
 import React, { useState, useEffect } from 'react';
+import { SubMerchant, TelecomOrder, PayoutRecord, UserProfile } from './types';
+import {
+  subscribeSubMerchants,
+  subscribeOrders,
+  subscribePayouts,
+} from './lib/firestoreService';
 import { Header } from './components/Header';
+import { LiveDispatchTicker } from './components/LiveDispatchTicker';
 import { Storefront } from './components/Storefront';
 import { AgentPortal } from './components/AgentPortal';
 import { AdminConsole } from './components/AdminConsole';
+import { HubtelRetryService } from './components/HubtelRetryService';
 import { TransactionHistory } from './components/TransactionHistory';
 import { CommissionAnalytics } from './components/CommissionAnalytics';
-import { HubtelRetryService } from './components/HubtelRetryService';
-import { ApiSecurityManager } from './components/ApiSecurityManager';
 import { UssdHelper } from './components/UssdHelper';
 import { ReceiptModal } from './components/ReceiptModal';
+import { AgentSelectModal } from './components/AgentSelectModal';
 import { BulkPurchaseModal } from './components/BulkPurchaseModal';
 import { AuthModal } from './components/AuthModal';
-import { AgentSelectModal } from './components/AgentSelectModal';
 import { ToastNotificationContainer } from './components/ToastNotificationContainer';
-import { ToastNotificationProvider } from './context/ToastNotificationContext';
 import { useFirestoreTransactionListener } from './lib/useFirestoreTransactionListener';
-import { SubMerchant, TelecomOrder, UserProfile } from './types';
-import {
-  subscribeSubMerchants,
-  DEFAULT_SEED_AGENTS,
-} from './lib/firestoreService';
-import { retryBackgroundSync } from './lib/retryBackgroundService';
 
-function AppContent() {
-  const [currentTab, setCurrentTab] = useState<'storefront' | 'agent-portal' | 'admin' | 'security' | 'ussd' | 'history' | 'analytics' | 'retry-service'>('storefront');
-  const [agents, setAgents] = useState<SubMerchant[]>(DEFAULT_SEED_AGENTS);
+export const App: React.FC = () => {
+  // Listen for realtime transactions to trigger chimes and toasts
+  useFirestoreTransactionListener();
+
+  const [currentTab, setCurrentTab] = useState<
+    'storefront' | 'agent-portal' | 'admin' | 'security' | 'ussd' | 'history' | 'analytics' | 'retry-service'
+  >('storefront');
+
+  const [agents, setAgents] = useState<SubMerchant[]>([]);
+  const [orders, setOrders] = useState<TelecomOrder[]>([]);
+  const [payouts, setPayouts] = useState<PayoutRecord[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<SubMerchant | null>(null);
-  const [activeReceiptOrder, setActiveReceiptOrder] = useState<TelecomOrder | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
   // Modals
-  const [showBulkModal, setShowBulkModal] = useState<boolean>(false);
-  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
-  const [showAgentSelectModal, setShowAgentSelectModal] = useState<boolean>(false);
+  const [receiptOrder, setReceiptOrder] = useState<TelecomOrder | null>(null);
+  const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  // User Auth State
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>({
-    uid: 'USR-MASTER-ADMIN',
-    email: 'admin@ghanatelecom.gh',
-    displayName: 'Master Merchant Admin',
-    role: 'ADMIN',
-  });
-
-  // Attach Firestore Real-time Transaction Listener
-  useFirestoreTransactionListener({ activeAgent: selectedAgent, enabled: true });
-
-  // 1. Subscribe to Firebase Firestore Sub-Merchants & Start Auto-Retry Background Sync
+  // Initialize Firestore listeners
   useEffect(() => {
-    // Start background sync manager
-    retryBackgroundSync.start();
-
-    const unsubscribe = subscribeSubMerchants((loadedAgents) => {
-      setAgents(loadedAgents);
-      // Auto-resolve agent if URL param matches
+    const unsubAgents = subscribeSubMerchants((data) => {
+      setAgents(data);
+      // Check query param for agent referral link
       const params = new URLSearchParams(window.location.search);
-      const agentSlugOrId = params.get('agent');
-      if (agentSlugOrId) {
-        const found = loadedAgents.find((a) => a.id === agentSlugOrId || a.slug === agentSlugOrId);
-        if (found) {
-          setSelectedAgent(found);
-        }
+      const refAgentId = params.get('agentId');
+      if (refAgentId) {
+        const found = data.find((a) => a.id === refAgentId);
+        if (found) setSelectedAgent(found);
       }
     });
 
+    const unsubOrders = subscribeOrders((data) => {
+      setOrders(data);
+    });
+
+    const unsubPayouts = subscribePayouts((data) => {
+      setPayouts(data);
+    });
+
     return () => {
-      unsubscribe();
-      retryBackgroundSync.stop();
+      unsubAgents();
+      unsubOrders();
+      unsubPayouts();
     };
   }, []);
 
-  // Handle Login
-  const handleLogin = (user: UserProfile, agent?: SubMerchant) => {
-    setCurrentUser(user);
-    if (agent) {
-      setSelectedAgent(agent);
-      setCurrentTab('agent-portal');
-    } else if (user.role === 'ADMIN') {
-      setCurrentTab('admin');
-    }
+  const handleOrderCompleted = (order: TelecomOrder) => {
+    setReceiptOrder(order);
   };
 
-  // Handle Logout
   const handleLogout = () => {
     setCurrentUser(null);
-    setCurrentTab('storefront');
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-amber-400 selection:text-slate-950 font-sans">
-      {/* Top Header Navigation */}
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans transition-colors duration-200">
       <Header
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
         selectedAgent={selectedAgent}
-        onOpenAgentModal={() => setShowAgentSelectModal(true)}
+        onOpenAgentModal={() => setIsAgentModalOpen(true)}
+        onOpenBulkModal={() => setIsBulkModalOpen(true)}
         currentUser={currentUser}
-        onOpenAuthModal={() => setShowAuthModal(true)}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onLogout={handleLogout}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 pb-16">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 md:p-8">
+        <LiveDispatchTicker
+          orders={orders}
+          agents={agents}
+          selectedAgent={selectedAgent}
+          onNavigateToStorefront={() => setCurrentTab('storefront')}
+        />
+
         {currentTab === 'storefront' && (
           <Storefront
+            agents={agents}
             selectedAgent={selectedAgent}
-            onViewReceipt={(order) => setActiveReceiptOrder(order)}
-            onOpenAgentModal={() => setShowAgentSelectModal(true)}
-            onOpenBulkModal={() => setShowBulkModal(true)}
+            onSelectAgent={(agent) => setSelectedAgent(agent)}
+            onOrderCompleted={handleOrderCompleted}
+            onOpenAgentSelect={() => setIsAgentModalOpen(true)}
+            onNavigateToTab={(tab) => setCurrentTab(tab)}
           />
         )}
 
         {currentTab === 'agent-portal' && (
           <AgentPortal
             agents={agents}
-            activeAgent={selectedAgent}
+            selectedAgent={selectedAgent}
             onSelectAgent={(agent) => setSelectedAgent(agent)}
-            onViewReceipt={(order) => setActiveReceiptOrder(order)}
+            onNavigateToTab={(tab) => setCurrentTab(tab)}
           />
         )}
 
         {currentTab === 'admin' && (
           <AdminConsole
             agents={agents}
-            onSelectAgent={(agent) => {
-              setSelectedAgent(agent);
-              setCurrentTab('agent-portal');
-            }}
-            onViewReceipt={(order) => setActiveReceiptOrder(order)}
-            onNavigateToAnalytics={() => setCurrentTab('analytics')}
-            onNavigateToRetryService={() => setCurrentTab('retry-service')}
-          />
-        )}
-
-        {currentTab === 'history' && (
-          <TransactionHistory
-            agentId={selectedAgent?.id}
-            agentName={selectedAgent?.businessName}
-            availableAgents={agents}
-            onViewReceipt={(order) => setActiveReceiptOrder(order)}
-            onSelectAgent={(agId) => {
-              const found = agents.find((a) => a.id === agId);
-              if (found) setSelectedAgent(found);
-            }}
+            orders={orders}
+            payouts={payouts}
           />
         )}
 
         {currentTab === 'analytics' && (
           <CommissionAnalytics
             agents={agents}
-            initialSelectedAgentId={selectedAgent?.id || 'ALL'}
-            onSelectAgentForDetails={(agent) => {
-              setSelectedAgent(agent);
-            }}
-            onNavigateToPortal={() => {
-              setCurrentTab('agent-portal');
-            }}
+            orders={orders}
+            payouts={payouts}
           />
         )}
 
         {currentTab === 'retry-service' && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-            <HubtelRetryService
-              onViewReceipt={(order) => setActiveReceiptOrder(order)}
-            />
-          </div>
+          <HubtelRetryService orders={orders} />
         )}
 
-        {currentTab === 'security' && <ApiSecurityManager />}
+        {currentTab === 'history' && (
+          <TransactionHistory
+            orders={orders}
+            onViewReceipt={(ord) => setReceiptOrder(ord)}
+          />
+        )}
 
         {currentTab === 'ussd' && <UssdHelper />}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-slate-900/60 border-t border-slate-800/80 py-6 px-4 text-center text-xs text-slate-400">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-            <span>Ghana Telecom Networks • Paystack Payment Gateway & Hubtel Direct Routing</span>
-          </div>
-          <p className="text-slate-500 text-[11px]">
-            © {new Date().getFullYear()} Ghana Telecom Hub & Agent Network. Real-time Firebase Cloud Storage & 10% Commission Engine.
-          </p>
-        </div>
-      </footer>
+      {/* Global Modals */}
+      <ReceiptModal order={receiptOrder} onClose={() => setReceiptOrder(null)} />
 
-      {/* Modals */}
-      <ReceiptModal
-        order={activeReceiptOrder}
-        onClose={() => setActiveReceiptOrder(null)}
-      />
-
-      {showBulkModal && (
-        <BulkPurchaseModal
+      {isAgentModalOpen && (
+        <AgentSelectModal
+          isOpen={isAgentModalOpen}
+          agents={agents}
           selectedAgent={selectedAgent}
-          onClose={() => setShowBulkModal(false)}
-          onOrdersCompleted={() => {
-            // refresh
+          onSelectAgent={(ag) => setSelectedAgent(ag)}
+          onClose={() => setIsAgentModalOpen(false)}
+          onNavigateToTab={(tab) => setCurrentTab(tab)}
+        />
+      )}
+
+      {isBulkModalOpen && (
+        <BulkPurchaseModal
+          isOpen={isBulkModalOpen}
+          onClose={() => setIsBulkModalOpen(false)}
+          selectedAgent={selectedAgent}
+          onSuccess={(newOrders) => {
+            if (newOrders.length > 0) {
+              setReceiptOrder(newOrders[0]);
+            }
           }}
         />
       )}
 
-      {showAuthModal && (
-        <AuthModal
-          agents={agents}
-          currentUser={currentUser}
-          onLogin={handleLogin}
-          onClose={() => setShowAuthModal(false)}
-        />
-      )}
-
-      {showAgentSelectModal && (
-        <AgentSelectModal
-          agents={agents}
-          selectedAgent={selectedAgent}
-          onSelectAgent={(ag) => setSelectedAgent(ag)}
-          onClose={() => setShowAgentSelectModal(false)}
-        />
-      )}
-
-      {/* Global Real-time Firestore Toast Notification Stack */}
-      <ToastNotificationContainer
-        onViewReceipt={(order) => setActiveReceiptOrder(order)}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          if (user.role === 'admin') setCurrentTab('admin');
+          if (user.role === 'agent' && user.agentId) {
+            const ag = agents.find((a) => a.id === user.agentId);
+            if (ag) setSelectedAgent(ag);
+            setCurrentTab('agent-portal');
+          }
+        }}
+        agents={agents}
       />
+
+      {/* Realtime Toasts & Synthesized Audio Alerts */}
+      <ToastNotificationContainer />
     </div>
   );
-}
-
-export default function App() {
-  return (
-    <ToastNotificationProvider>
-      <AppContent />
-    </ToastNotificationProvider>
-  );
-}
-
+};

@@ -1,51 +1,28 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper functions
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    // Default deny catch-all
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Agents collection
+    // Agents collection and sub-collections (orders, commissions, payouts)
     match /agents/{agentId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
 
-      // Agent orders subcollection
-      match /orders/{orderId} {
-        allow read: if true;
-        allow write: if true;
-      }
-
-      // Agent commissions subcollection
-      match /commissions/{commissionId} {
-        allow read: if true;
-        allow write: if true;
-      }
-
-      // Agent payouts subcollection
-      match /payouts/{payoutId} {
-        allow read: if true;
-        allow write: if true;
+      match /{subpath=**} {
+        allow read, write: if true;
       }
     }
 
-    // Global Orders collection for real-time listener subscriptions
+    // Orders collection
     match /orders/{orderId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
     }
 
-    // Global Payouts collection
+    // Payouts collection
     match /payouts/{payoutId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
+    }
+
+    // Default fallback
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }

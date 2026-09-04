@@ -2,87 +2,22 @@ import {
   collection,
   doc,
   setDoc,
-  getDoc,
   getDocs,
+  getDoc,
   updateDoc,
+  onSnapshot,
   query,
   orderBy,
   limit,
-  onSnapshot,
   increment,
-  where,
   Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import {
-  SubMerchant,
-  TelecomOrder,
-  CommissionRecord,
-  PayoutRecord,
-  TelecomNetwork,
-} from '../types';
+import { SubMerchant, TelecomOrder, CommissionRecord, PayoutRecord, TelecomNetwork } from '../types';
 
-const AGENTS_COLLECTION = 'agents';
-const ORDERS_COLLECTION = 'orders';
-const PAYOUTS_COLLECTION = 'payouts';
-
-// Production initialized Sub-Merchants
-export const DEFAULT_SEED_AGENTS: SubMerchant[] = [
-  {
-    id: 'AGT-001',
-    name: 'Kofi Mensah',
-    businessName: 'Accra Mall Data & Telecom',
-    phone: '0244123456',
-    network: 'MTN',
-    email: 'kofi.accra@ghanatelecom.gh',
-    pin: '1234',
-    slug: 'accra-mall-data',
-    commissionRate: 10,
-    totalCommissionEarned: 0.00,
-    availableCommissionBalance: 0.00,
-    totalSalesVolume: 0.00,
-    totalOrdersCount: 0,
-    status: 'active',
-    createdAt: new Date().toISOString(),
-    customThemeColor: '#fbbf24',
-  },
-  {
-    id: 'AGT-002',
-    name: 'Ama Serwaa',
-    businessName: 'Kumasi Tech Hub Airtime',
-    phone: '0207654321',
-    network: 'TELECEL',
-    email: 'ama.kumasi@ghanatelecom.gh',
-    pin: '5678',
-    slug: 'kumasi-hub',
-    commissionRate: 10,
-    totalCommissionEarned: 0.00,
-    availableCommissionBalance: 0.00,
-    totalSalesVolume: 0.00,
-    totalOrdersCount: 0,
-    status: 'active',
-    createdAt: new Date().toISOString(),
-    customThemeColor: '#e11d48',
-  },
-  {
-    id: 'AGT-003',
-    name: 'Kwame Osei',
-    businessName: 'Madina FastLink Bundles',
-    phone: '0271122334',
-    network: 'AT',
-    email: 'kwame.madina@ghanatelecom.gh',
-    pin: '9900',
-    slug: 'madina-fastlink',
-    commissionRate: 10,
-    totalCommissionEarned: 0.00,
-    availableCommissionBalance: 0.00,
-    totalSalesVolume: 0.00,
-    totalOrdersCount: 0,
-    status: 'active',
-    createdAt: new Date().toISOString(),
-    customThemeColor: '#2563eb',
-  },
-];
+export const AGENTS_COLLECTION = 'agents';
+export const ORDERS_COLLECTION = 'orders';
+export const PAYOUTS_COLLECTION = 'payouts';
 
 /**
  * Strips all undefined fields recursively from an object so Firestore setDoc/updateDoc never fails.
@@ -106,25 +41,17 @@ export function sanitizeForFirestore<T>(obj: T): T {
   return obj;
 }
 
-// Helper to seed initial data if none exists
-export async function seedInitialAgentsIfEmpty(): Promise<void> {
-  try {
-    const snap = await getDocs(collection(db, AGENTS_COLLECTION));
-    if (snap.empty) {
-      for (const agent of DEFAULT_SEED_AGENTS) {
-        await setDoc(doc(db, AGENTS_COLLECTION, agent.id), sanitizeForFirestore(agent));
-      }
-    }
-  } catch (err) {
-    console.warn('Firestore seeding check (using fallback local state if needed):', err);
-  }
-}
-
-// 1. Create a Sub-Merchant / Agent
-export async function createSubMerchant(data: Omit<SubMerchant, 'id' | 'createdAt' | 'totalCommissionEarned' | 'availableCommissionBalance' | 'totalSalesVolume' | 'totalOrdersCount' | 'status'> & { customId?: string }): Promise<SubMerchant> {
-  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  const id = data.customId || `AGT-${randomSuffix}`;
-  
+// 1. Admin creates a new Sub-Merchant Agent
+export async function createAgentByAdmin(data: {
+  name: string;
+  businessName: string;
+  phone: string;
+  email?: string;
+  momoNumber?: string;
+  momoNetwork?: TelecomNetwork;
+  commissionRate?: number;
+}): Promise<SubMerchant> {
+  const id = `AGT-${Date.now().toString().slice(-6)}`;
   const newAgent: SubMerchant = {
     ...data,
     id,
@@ -140,67 +67,40 @@ export async function createSubMerchant(data: Omit<SubMerchant, 'id' | 'createdA
   try {
     await setDoc(doc(db, AGENTS_COLLECTION, id), sanitizeForFirestore(newAgent));
   } catch (err) {
-    console.error('Error saving agent to Firestore:', err);
+    console.error('Error saving agent to Firestore by Admin:', err);
+    throw err;
   }
 
   return newAgent;
 }
 
-// 2. Fetch all Sub-Merchants (realtime subscription)
+// Alias for backwards compatibility
+export const registerSubMerchant = createAgentByAdmin;
+
+// 2. Fetch all Sub-Merchants (realtime subscription - Admin-created agents only)
 export function subscribeSubMerchants(callback: (agents: SubMerchant[]) => void): Unsubscribe {
   try {
-    const q = query(collection(db, AGENTS_COLLECTION), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, AGENTS_COLLECTION));
     return onSnapshot(
       q,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const list: SubMerchant[] = [];
-          snapshot.forEach((d) => list.push(d.data() as SubMerchant));
-          callback(list);
-        } else {
-          // seed fallback
-          callback(DEFAULT_SEED_AGENTS);
-          seedInitialAgentsIfEmpty();
-        }
+      (snap) => {
+        const agents: SubMerchant[] = snap.docs.map((d) => d.data() as SubMerchant);
+        callback(agents);
       },
-      (error) => {
-        console.warn('Firestore agents subscribe error, falling back:', error);
-        callback(DEFAULT_SEED_AGENTS);
+      (err) => {
+        console.warn('Firestore agents listener fallback:', err);
+        callback([]);
       }
     );
-  } catch {
-    callback(DEFAULT_SEED_AGENTS);
+  } catch (e) {
+    callback([]);
     return () => {};
   }
 }
 
-// 3. Fetch single Sub-Merchant by ID or Slug
-export async function getSubMerchant(idOrSlug: string): Promise<SubMerchant | null> {
-  try {
-    // try by ID
-    const docRef = doc(db, AGENTS_COLLECTION, idOrSlug);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      return snap.data() as SubMerchant;
-    }
-    // try by slug
-    const q = query(collection(db, AGENTS_COLLECTION), where('slug', '==', idOrSlug));
-    const slugSnap = await getDocs(q);
-    if (!slugSnap.empty) {
-      return slugSnap.docs[0].data() as SubMerchant;
-    }
-  } catch (err) {
-    console.warn('Error fetching agent:', err);
-  }
-  return DEFAULT_SEED_AGENTS.find((a) => a.id === idOrSlug || a.slug === idOrSlug) || null;
-}
-
-// 4. Record Telecom Order & Auto-Credit 10% Commission
-export async function recordOrderAndCommission(order: TelecomOrder): Promise<{
-  order: TelecomOrder;
-  commissionRecord?: CommissionRecord;
-}> {
-  const orderId = order.id || `ORD-GH-${Date.now().toString().slice(-6)}`;
+// 3. Record Telecom Order (customer purchases only)
+export async function recordTelecomOrder(order: Omit<TelecomOrder, 'id'> & { id?: string }): Promise<TelecomOrder> {
+  const orderId = order.id || `ORD-GH-${Date.now().toString().slice(-7)}`;
   const orderToSave: TelecomOrder = {
     ...order,
     id: orderId,
@@ -211,21 +111,15 @@ export async function recordOrderAndCommission(order: TelecomOrder): Promise<{
     hubtelTransactionId: order.hubtelTransactionId || '',
   };
 
-  let commRecord: CommissionRecord | undefined = undefined;
-
   try {
     const sanitizedOrder = sanitizeForFirestore(orderToSave);
 
     // 1. Save in Global Orders collection
     await setDoc(doc(db, ORDERS_COLLECTION, orderId), sanitizedOrder);
 
-    // 2. If purchase was through a sub-merchant agent, save to Agent's Dedicated Sub-Collection & Credit Commission
+    // 2. If purchase was through an active sub-merchant agent, attribute commission
     if (order.agentId && order.agentId !== 'DIRECT') {
       const agentRef = doc(db, AGENTS_COLLECTION, order.agentId);
-      const agentSnap = await getDoc(agentRef);
-
-      const commissionRate = agentSnap.exists() ? (agentSnap.data() as SubMerchant).commissionRate || 10 : 10;
-      const commissionAmount = Number(((order.amount * commissionRate) / 100).toFixed(2));
 
       // Dedicated Agent sub-collection: agents/{agentId}/orders/{orderId}
       const agentOrderRef = doc(db, AGENTS_COLLECTION, order.agentId, 'orders', orderId);
@@ -233,120 +127,97 @@ export async function recordOrderAndCommission(order: TelecomOrder): Promise<{
 
       // Create Commission Record in agents/{agentId}/commissions/{commId}
       const commId = `COMM-${orderId}`;
-      commRecord = {
+      const commRecord: CommissionRecord = {
         id: commId,
+        orderId,
         agentId: order.agentId,
-        agentName: order.agentName || 'Agent',
-        agentPhone: order.agentPhone || '',
-        orderId: orderId,
-        orderAmount: order.amount,
-        commissionRate: commissionRate,
-        commissionAmount: commissionAmount,
-        status: 'CREDITED',
-        creditedAt: new Date().toISOString(),
+        amountGhs: order.commissionGhs,
+        orderTotalGhs: order.amountGhs,
+        ratePercent: order.amountGhs > 0 ? Math.round((order.commissionGhs / order.amountGhs) * 100) : 10,
+        createdAt: new Date().toISOString(),
       };
 
       const agentCommRef = doc(db, AGENTS_COLLECTION, order.agentId, 'commissions', commId);
       await setDoc(agentCommRef, sanitizeForFirestore(commRecord));
 
-      // Atomically update Agent's balance and sales stats
+      // Atomically update Agent's balance and sales volume
       await updateDoc(agentRef, {
-        availableCommissionBalance: increment(commissionAmount),
-        totalCommissionEarned: increment(commissionAmount),
-        totalSalesVolume: increment(order.amount),
+        totalCommissionEarned: increment(order.commissionGhs),
+        availableCommissionBalance: increment(order.commissionGhs),
+        totalSalesVolume: increment(order.amountGhs),
         totalOrdersCount: increment(1),
-        lastActiveAt: new Date().toISOString(),
       });
     }
   } catch (err) {
-    console.error('Error recording order in Firestore:', err);
+    console.error('Error recording telecom order to Firestore:', err);
   }
 
-  return { order: orderToSave, commissionRecord: commRecord };
+  return orderToSave;
 }
 
-// 5. Subscribe to Global Orders
-export function subscribeGlobalOrders(callback: (orders: TelecomOrder[]) => void): Unsubscribe {
+// 4. Subscribe to Realtime Orders (only authentic customer purchases)
+export function subscribeOrders(callback: (orders: TelecomOrder[]) => void): Unsubscribe {
   try {
     const q = query(collection(db, ORDERS_COLLECTION), orderBy('createdAt', 'desc'), limit(100));
     return onSnapshot(
       q,
       (snap) => {
-        const list: TelecomOrder[] = [];
-        snap.forEach((d) => list.push(d.data() as TelecomOrder));
-        callback(list);
+        const orders: TelecomOrder[] = snap.docs.map((d) => d.data() as TelecomOrder);
+        callback(orders);
       },
       (err) => {
-        console.warn('Orders subscription error:', err);
+        console.warn('Orders subscription fallback:', err);
+        callback([]);
       }
     );
-  } catch {
+  } catch (e) {
+    callback([]);
     return () => {};
   }
 }
 
-// 6. Subscribe to Dedicated Sub-Merchant Orders (sub-agent's own database)
+// 5. Subscribe to Agent's Dedicated Orders
 export function subscribeAgentOrders(agentId: string, callback: (orders: TelecomOrder[]) => void): Unsubscribe {
   try {
-    const ordersSubColl = collection(db, AGENTS_COLLECTION, agentId, 'orders');
-    const q = query(ordersSubColl, orderBy('createdAt', 'desc'), limit(100));
+    const q = query(
+      collection(db, AGENTS_COLLECTION, agentId, 'orders'),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
     return onSnapshot(
       q,
       (snap) => {
-        const list: TelecomOrder[] = [];
-        snap.forEach((d) => list.push(d.data() as TelecomOrder));
-        callback(list);
+        const orders: TelecomOrder[] = snap.docs.map((d) => d.data() as TelecomOrder);
+        callback(orders);
       },
       (err) => {
-        console.warn(`Agent ${agentId} orders subscription error:`, err);
+        console.warn('Agent orders fallback:', err);
+        callback([]);
       }
     );
-  } catch {
+  } catch (e) {
+    callback([]);
     return () => {};
   }
 }
 
-// 7. Subscribe to Dedicated Sub-Merchant Commissions
-export function subscribeAgentCommissions(agentId: string, callback: (commissions: CommissionRecord[]) => void): Unsubscribe {
-  try {
-    const commSubColl = collection(db, AGENTS_COLLECTION, agentId, 'commissions');
-    const q = query(commSubColl, orderBy('creditedAt', 'desc'), limit(100));
-    return onSnapshot(
-      q,
-      (snap) => {
-        const list: CommissionRecord[] = [];
-        snap.forEach((d) => list.push(d.data() as CommissionRecord));
-        callback(list);
-      },
-      (err) => {
-        console.warn(`Agent ${agentId} commissions error:`, err);
-      }
-    );
-  } catch {
-    return () => {};
-  }
-}
-
-// 8. Process Payout / Commission Withdrawal to Sub-Merchant Phone Number
-export async function processAgentCommissionPayout(
+// 6. Record Payout Request
+export async function recordPayoutRequest(
   agent: SubMerchant,
   amount: number,
-  channel: 'MTN_MOMO' | 'TELECEL_CASH' | 'AT_MONEY'
+  momoNumber: string,
+  momoNetwork: TelecomNetwork
 ): Promise<PayoutRecord> {
-  const payoutId = `PAYOUT-GH-${Date.now().toString().slice(-6)}`;
+  const payoutId = `PAYOUT-${Date.now().toString().slice(-6)}`;
   const payout: PayoutRecord = {
     id: payoutId,
     agentId: agent.id,
-    agentName: agent.name,
-    agentPhone: agent.phone,
-    agentNetwork: agent.network,
-    amount: amount,
-    channel: channel,
-    status: 'SUCCESS',
-    reference: `REF-MOMO-${Date.now()}`,
-    hubtelTransactionId: `HUB-DISB-${Math.floor(10000000 + Math.random() * 90000000)}`,
+    amountGhs: amount,
+    status: 'PAID',
+    momoNumber,
+    momoNetwork,
+    requestedAt: new Date().toISOString(),
     processedAt: new Date().toISOString(),
-    notes: `10% Commission auto-credited & disbursed to ${agent.phone} (${channel})`,
   };
 
   try {
@@ -364,29 +235,89 @@ export async function processAgentCommissionPayout(
       availableCommissionBalance: increment(-amount),
     });
   } catch (err) {
-    console.error('Error processing payout in Firestore:', err);
+    console.error('Error recording payout request:', err);
   }
 
   return payout;
 }
 
-// 9. Update Order Delivery & Retry State
-export async function updateOrderStatusAndRetry(
+// 7. Subscribe to Global Payouts
+export function subscribePayouts(callback: (payouts: PayoutRecord[]) => void): Unsubscribe {
+  try {
+    const q = query(collection(db, PAYOUTS_COLLECTION), orderBy('requestedAt', 'desc'), limit(50));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const payouts: PayoutRecord[] = snap.docs.map((d) => d.data() as PayoutRecord);
+        callback(payouts);
+      },
+      (err) => {
+        console.warn('Payouts subscription error:', err);
+        callback([]);
+      }
+    );
+  } catch (e) {
+    callback([]);
+    return () => {};
+  }
+}
+
+// 8. Update Order (e.g. For Retry Service)
+export async function updateOrderDelivery(
   orderId: string,
   updates: Partial<TelecomOrder> & { agentId?: string }
 ): Promise<void> {
   try {
     const sanitizedUpdates = sanitizeForFirestore(updates);
-    // 1. Update in Global Orders
     const globalOrderRef = doc(db, ORDERS_COLLECTION, orderId);
     await updateDoc(globalOrderRef, sanitizedUpdates);
 
-    // 2. If sub-merchant order, update in agent's sub-collection
     if (updates.agentId && updates.agentId !== 'DIRECT') {
       const agentOrderRef = doc(db, AGENTS_COLLECTION, updates.agentId, 'orders', orderId);
       await updateDoc(agentOrderRef, sanitizedUpdates);
     }
   } catch (err) {
-    console.warn('Error updating order retry status in Firestore:', err);
+    console.warn('Error updating order delivery status in Firestore:', err);
+  }
+}
+
+// 9. Manual Refund in Firestore (Admin triggered for Paystack transactions)
+export async function refundOrderInFirestore(
+  orderId: string,
+  refundDetails: {
+    refundReference: string;
+    amountGhs: number;
+    reason?: string;
+    adminEmail?: string;
+    status: 'PROCESSED' | 'PENDING' | 'SIMULATED';
+  },
+  agentId?: string
+): Promise<void> {
+  try {
+    const orderUpdates: Partial<TelecomOrder> = {
+      paymentStatus: 'REFUNDED',
+      deliveryStatus: 'FAILED',
+      deliveryMessage: `Refunded via Paystack (Ref: ${refundDetails.refundReference}). ${refundDetails.reason || ''}`.trim(),
+      refundDetails: {
+        ...refundDetails,
+        refundedAt: new Date().toISOString(),
+      },
+    };
+
+    const sanitizedUpdates = sanitizeForFirestore(orderUpdates);
+    const globalOrderRef = doc(db, ORDERS_COLLECTION, orderId);
+    await updateDoc(globalOrderRef, sanitizedUpdates);
+
+    if (agentId && agentId !== 'DIRECT') {
+      try {
+        const agentOrderRef = doc(db, AGENTS_COLLECTION, agentId, 'orders', orderId);
+        await updateDoc(agentOrderRef, sanitizedUpdates);
+      } catch (e) {
+        // Continue if agent order sub-collection document does not exist
+      }
+    }
+  } catch (err) {
+    console.warn('Error recording refund in Firestore:', err);
+    throw err;
   }
 }

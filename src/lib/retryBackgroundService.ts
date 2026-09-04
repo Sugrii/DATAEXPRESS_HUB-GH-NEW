@@ -1,83 +1,47 @@
-import { fetchHubtelRetryQueue, triggerProcessRetryQueueNow } from './apiClient';
-import { updateOrderStatusAndRetry } from './firestoreService';
-import { HubtelRetryQueueItem, TelecomOrder } from '../types';
+import { TelecomOrder } from '../types';
+import { updateOrderDelivery } from './firestoreService';
+import { processHubtelFulfillment } from './apiClient';
 
-/**
- * Client-Side Background Sync Manager
- * Automatically synchronizes background Hubtel retry and failover outcomes
- * with the Firestore global orders and sub-merchant sub-collections.
- */
-class HubtelRetryBackgroundSync {
-  private syncTimer: NodeJS.Timeout | null = null;
-  private isRunning: boolean = false;
-  private syncIntervalMs: number = 6000;
-  private listeners: Set<(queue: HubtelRetryQueueItem[]) => void> = new Set();
-  private lastProcessedQueue: Map<string, string> = new Map();
+export async function retryTelecomOrderDelivery(order: TelecomOrder): Promise<boolean> {
+  try {
+    await updateOrderDelivery(order.id, {
+      deliveryStatus: 'RETRYING',
+      deliveryMessage: `Hubtel Auto-Retry Initiated at ${new Date().toLocaleTimeString()}...`,
+      agentId: order.agentId,
+    });
 
-  public start() {
-    if (this.isRunning) return;
-    this.isRunning = true;
-    this.poll();
-    this.syncTimer = setInterval(() => this.poll(), this.syncIntervalMs);
-  }
+    const result = await processHubtelFulfillment({
+      orderId: order.id,
+      customerPhone: order.customerPhone,
+      network: order.network,
+      productType: order.productType,
+      packageName: order.packageName,
+      amountGhs: order.amountGhs,
+    });
 
-  public stop() {
-    if (this.syncTimer) {
-      clearInterval(this.syncTimer);
-      this.syncTimer = null;
+    if (result.success) {
+      await updateOrderDelivery(order.id, {
+        deliveryStatus: 'DELIVERED',
+        deliveryMessage: result.deliveryMessage || `Delivered via Hubtel Node retry. Ref: ${result.hubtelTransactionId}`,
+        hubtelTransactionId: result.hubtelTransactionId || order.hubtelTransactionId,
+        agentId: order.agentId,
+      });
+      return true;
+    } else {
+      await updateOrderDelivery(order.id, {
+        deliveryStatus: 'FAILED',
+        deliveryMessage: result.error || 'Retry attempt failed to reach carrier switch.',
+        agentId: order.agentId,
+      });
+      return false;
     }
-    this.isRunning = false;
-  }
-
-  public subscribe(callback: (queue: HubtelRetryQueueItem[]) => void) {
-    this.listeners.add(callback);
-    return () => {
-      this.listeners.delete(callback);
-    };
-  }
-
-  private async poll() {
-    try {
-      const data = await fetchHubtelRetryQueue();
-      const queue: HubtelRetryQueueItem[] = data.queue || [];
-
-      // Notify all registered UI listeners
-      this.listeners.forEach((listener) => listener(queue));
-
-      // Sync resolved retry items with Firestore
-      for (const item of queue) {
-        const previousStatus = this.lastProcessedQueue.get(item.orderId);
-        
-        if (item.status === 'RESOLVED' && previousStatus !== 'RESOLVED') {
-          // Update Firestore order record to DELIVERED with Hubtel transaction metadata
-          await updateOrderStatusAndRetry(item.orderId, {
-            deliveryStatus: 'DELIVERED',
-            retryStatus: 'RESOLVED',
-            deliveryMessage: `Auto-delivered via Failover Route (${item.currentRoute}) after ${item.retryCount} retries.`,
-            hubtelTransactionId: `HUB-FAILOVER-${Date.now().toString().slice(-8)}`,
-            currentRoute: item.currentRoute,
-            retryCount: item.retryCount,
-            lastRetryAt: item.lastAttemptAt || new Date().toISOString(),
-            retryHistory: item.history,
-            agentId: item.agentId,
-          });
-        } else if (item.status === 'RE_ROUTED' && previousStatus !== 'RE_ROUTED') {
-          await updateOrderStatusAndRetry(item.orderId, {
-            retryStatus: 'RE_ROUTED',
-            currentRoute: item.currentRoute,
-            retryCount: item.retryCount,
-            lastRetryAt: item.lastAttemptAt || new Date().toISOString(),
-            retryHistory: item.history,
-            agentId: item.agentId,
-          });
-        }
-
-        this.lastProcessedQueue.set(item.orderId, item.status);
-      }
-    } catch (err) {
-      console.warn('Hubtel background sync poll error:', err);
-    }
+  } catch (err) {
+    console.error('Retry error:', err);
+    await updateOrderDelivery(order.id, {
+      deliveryStatus: 'FAILED',
+      deliveryMessage: 'Failed during retry execution.',
+      agentId: order.agentId,
+    });
+    return false;
   }
 }
-
-export const retryBackgroundSync = new HubtelRetryBackgroundSync();

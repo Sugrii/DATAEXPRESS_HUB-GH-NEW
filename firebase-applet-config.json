@@ -1,12 +1,5 @@
 {
-  "projectId": "angular-amphora-f4dh4",
-  "appId": "1:773101587059:web:5de375d9bb536161cf7806",
-  "apiKey": "AIzaSyA8uvwx4oRBZyerhro_vpnVBgcLoM2o7oo",
-  "authDomain": "angular-amphora-f4dh4.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-d0757d40-6d52-4afb-b9af-3ebf5f82d347",
-  "storageBucket": "angular-amphora-f4dh4.firebasestorage.app",
-  "messagingSenderId": "773101587059",
-  "measurementId": "",
-  "oAuthClientId": "773101587059-6ggjbhdet2o525s2tkil5qag87u3vm8t.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "projectId": "ai-studio-d0757d40-6d52-4afb-b9af-3ebf5f82d347",
+  "appId": "1:109631888202:web:d0757d406d524afbb9af3e",
+  "firestoreDatabaseId": "(default)"
 }

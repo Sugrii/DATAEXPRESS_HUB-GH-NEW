@@ -1,23 +1,26 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import firebaseConfigData from '../../firebase-applet-config.json';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
+import { getAuth, Auth } from 'firebase/auth';
+import { getFirestore, Firestore } from 'firebase/firestore';
+import firebaseConfig from '../../firebase-applet-config.json';
 
-const firebaseConfig = {
-  apiKey: firebaseConfigData.apiKey,
-  authDomain: firebaseConfigData.authDomain,
-  projectId: firebaseConfigData.projectId,
-  storageBucket: firebaseConfigData.storageBucket,
-  messagingSenderId: firebaseConfigData.messagingSenderId,
-  appId: firebaseConfigData.appId,
-};
+const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-export const auth = getAuth(app);
-
-// Use custom firestoreDatabaseId if configured in project
-export const db = firebaseConfigData.firestoreDatabaseId
-  ? getFirestore(app, firebaseConfigData.firestoreDatabaseId)
+// Critical: export db with firestoreDatabaseId if present, or standard
+export const db: Firestore = firebaseConfig.firestoreDatabaseId 
+  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
   : getFirestore(app);
 
+// Safely guard Auth initialization to prevent Uncaught FirebaseError: auth/invalid-api-key
+let authInstance: Auth | null = null;
+try {
+  const cfg = firebaseConfig as { apiKey?: string };
+  const envKey = typeof import.meta !== 'undefined' ? (import.meta as { env?: Record<string, string> }).env?.VITE_FIREBASE_API_KEY : undefined;
+  if (cfg.apiKey || envKey) {
+    authInstance = getAuth(app);
+  }
+} catch (err) {
+  console.warn('Firebase Auth could not be initialized:', err);
+}
+
+export const auth = authInstance;
 export default app;

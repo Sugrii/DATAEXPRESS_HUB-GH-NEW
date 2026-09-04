@@ -1,748 +1,398 @@
 import React, { useState, useEffect } from 'react';
+import { SubMerchant, TelecomOrder, TelecomNetwork } from '../types';
+import {
+  recordPayoutRequest,
+  subscribeAgentOrders,
+} from '../lib/firestoreService';
+import { useToastNotification } from '../context/ToastNotificationContext';
 import {
   Users,
-  Gift,
-  ArrowUpRight,
   Wallet,
-  Smartphone,
-  CheckCircle2,
-  AlertCircle,
-  Copy,
-  Share2,
-  QrCode,
-  Sparkles,
-  Database,
   TrendingUp,
-  RefreshCw,
-  ExternalLink,
-  PlusCircle,
+  ArrowDownToLine,
+  Share2,
+  Check,
+  CheckCircle2,
   Clock,
-  Send,
-  Loader2,
-  DollarSign,
+  Building2,
+  Phone,
+  Percent,
+  AlertCircle,
   ShieldCheck,
-  Radio,
-  Volume2,
-  VolumeX,
-  Zap,
-  Play,
-  Bell,
+  ExternalLink,
 } from 'lucide-react';
-import { SubMerchant, TelecomOrder, CommissionRecord, PayoutRecord, TelecomNetwork } from '../types';
-import {
-  subscribeAgentOrders,
-  subscribeAgentCommissions,
-  processAgentCommissionPayout,
-  createSubMerchant,
-  recordOrderAndCommission,
-} from '../lib/firestoreService';
-import { disburseCommissionPayout } from '../lib/apiClient';
-import { useToastNotification } from '../context/ToastNotificationContext';
-import { TransactionHistory } from './TransactionHistory';
-import { CommissionAnalytics } from './CommissionAnalytics';
 
 interface AgentPortalProps {
   agents: SubMerchant[];
-  activeAgent: SubMerchant | null;
+  selectedAgent: SubMerchant | null;
   onSelectAgent: (agent: SubMerchant) => void;
-  onViewReceipt: (order: TelecomOrder) => void;
+  onNavigateToTab?: (tab: 'storefront' | 'agent-portal' | 'admin' | 'security' | 'ussd' | 'history' | 'analytics' | 'retry-service') => void;
 }
 
 export const AgentPortal: React.FC<AgentPortalProps> = ({
   agents,
-  activeAgent,
+  selectedAgent,
   onSelectAgent,
-  onViewReceipt,
+  onNavigateToTab,
 }) => {
+  const { addToast } = useToastNotification();
+  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'WITHDRAW'>('DASHBOARD');
   const [agentOrders, setAgentOrders] = useState<TelecomOrder[]>([]);
-  const [agentCommissions, setAgentCommissions] = useState<CommissionRecord[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [copySuccess, setCopySuccess] = useState<boolean>(false);
-  const [portalSubTab, setPortalSubTab] = useState<'orders' | 'analytics'>('orders');
+  const [copiedLink, setCopiedLink] = useState(false);
 
-  // Withdraw Commission state
-  const [isWithdrawing, setIsWithdrawing] = useState<boolean>(false);
-  const [withdrawAmount, setWithdrawAmount] = useState<string>('');
-  const [withdrawSuccessMsg, setWithdrawSuccessMsg] = useState<string>('');
-  const [withdrawError, setWithdrawError] = useState<string>('');
-  const [showWithdrawModal, setShowWithdrawModal] = useState<boolean>(false);
+  // Payout Form state
+  const [payoutAmount, setPayoutAmount] = useState('');
+  const [payoutMomoNumber, setPayoutMomoNumber] = useState('');
+  const [payoutNetwork, setPayoutNetwork] = useState<TelecomNetwork>('MTN');
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
 
-  // Create Sub-Merchant state
-  const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
-  const [newBusinessName, setNewBusinessName] = useState<string>('');
-  const [newAgentName, setNewAgentName] = useState<string>('');
-  const [newAgentPhone, setNewAgentPhone] = useState<string>('');
-  const [newAgentNetwork, setNewAgentNetwork] = useState<TelecomNetwork>('MTN');
-  const [newAgentEmail, setNewAgentEmail] = useState<string>('');
-  const [newAgentPin, setNewAgentPin] = useState<string>('1234');
-  const [newAgentCommission, setNewAgentCommission] = useState<number>(10);
-  const [isCreatingAgent, setIsCreatingAgent] = useState<boolean>(false);
+  // Current active agent view
+  const currentAgent = selectedAgent || (agents.length > 0 ? agents[0] : null);
 
-  // Real-time Toast System context
-  const { soundEnabled, setSoundEnabled, playNotificationChime, listenerActive } = useToastNotification();
-
-  const currentAgent = activeAgent || agents[0] || null;
-
-  // Subscribe to Dedicated Sub-Merchant Database
   useEffect(() => {
-    if (!currentAgent) return;
-    setIsLoading(true);
-
-    const unsubOrders = subscribeAgentOrders(currentAgent.id, (orders) => {
+    if (!currentAgent) {
+      setAgentOrders([]);
+      return;
+    }
+    const unsub = subscribeAgentOrders(currentAgent.id, (orders) => {
       setAgentOrders(orders);
-      setIsLoading(false);
     });
+    return () => unsub();
+  }, [currentAgent]);
 
-    const unsubComms = subscribeAgentCommissions(currentAgent.id, (comms) => {
-      setAgentCommissions(comms);
-    });
-
-    return () => {
-      unsubOrders();
-      unsubComms();
-    };
-  }, [currentAgent?.id]);
-
-  // Copy Storefront Link
-  const handleCopyStorefrontLink = () => {
+  const handlePayout = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!currentAgent) return;
-    const url = `${window.location.origin}/?agent=${currentAgent.slug || currentAgent.id}`;
-    navigator.clipboard.writeText(url);
-    setCopySuccess(true);
-    setTimeout(() => setCopySuccess(false), 2500);
-  };
 
-  // Process Instant Commission Payout to Phone Number
-  const handleExecuteWithdrawal = async () => {
-    if (!currentAgent) return;
-    const amount = Number(withdrawAmount) || currentAgent.availableCommissionBalance;
+    const amt = parseFloat(payoutAmount);
+    if (isNaN(amt) || amt <= 0) {
+      addToast('error', 'Invalid Amount', 'Please enter a valid payout amount.');
+      return;
+    }
 
-    if (amount <= 0 || amount > currentAgent.availableCommissionBalance) {
-      setWithdrawError(`Please enter an amount between GHS 1.00 and GHS ${currentAgent.availableCommissionBalance.toFixed(2)}`);
+    if (amt > currentAgent.availableCommissionBalance) {
+      addToast('error', 'Insufficient Balance', `Max available withdrawal is GHS ${currentAgent.availableCommissionBalance.toFixed(2)}.`);
       return;
     }
 
     setIsWithdrawing(true);
-    setWithdrawError('');
-    setWithdrawSuccessMsg('');
-
     try {
-      // 1. Call server-side MoMo disbursement route
-      const serverDisbRes = await disburseCommissionPayout({
-        agentId: currentAgent.id,
-        agentName: currentAgent.name,
-        agentPhone: currentAgent.phone,
-        agentNetwork: currentAgent.network,
-        amount: amount,
-      });
-
-      // 2. Update Firestore dedicated agent balance & ledger
-      await processAgentCommissionPayout(
+      await recordPayoutRequest(
         currentAgent,
-        amount,
-        currentAgent.network === 'MTN'
-          ? 'MTN_MOMO'
-          : currentAgent.network === 'TELECEL'
-          ? 'TELECEL_CASH'
-          : 'AT_MONEY'
+        amt,
+        payoutMomoNumber || currentAgent.momoNumber || currentAgent.phone,
+        payoutNetwork
       );
 
-      setWithdrawSuccessMsg(
-        `Success! GHS ${amount.toFixed(2)} was credited directly to ${currentAgent.phone} (${currentAgent.network} MoMo). Transaction Ref: ${serverDisbRes.momoReceipt}`
-      );
-      setShowWithdrawModal(false);
-      setWithdrawAmount('');
-    } catch (err: any) {
-      setWithdrawError(err.message || 'Failed to disburse payout to phone number');
+      addToast('success', 'Payout Dispatched', `GHS ${amt.toFixed(2)} sent to MoMo wallet (${payoutMomoNumber || currentAgent.phone}).`);
+      setPayoutAmount('');
+      setActiveTab('DASHBOARD');
+    } catch (err) {
+      addToast('error', 'Payout Failed', 'Could not process payout.');
     } finally {
       setIsWithdrawing(false);
     }
   };
 
-  // Create Sub-Merchant Handler
-  const handleCreateAgent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newBusinessName || !newAgentName || !newAgentPhone) {
-      return;
-    }
-
-    setIsCreatingAgent(true);
-    try {
-      const slug = newBusinessName.toLowerCase().replace(/[^a-z0-9]/g, '-');
-      const created = await createSubMerchant({
-        businessName: newBusinessName,
-        name: newAgentName,
-        phone: newAgentPhone,
-        network: newAgentNetwork,
-        email: newAgentEmail || `${slug}@ghanatelecom.gh`,
-        pin: newAgentPin || '1234',
-        slug: slug,
-        commissionRate: newAgentCommission || 10,
-        customThemeColor: newAgentNetwork === 'MTN' ? '#fbbf24' : newAgentNetwork === 'TELECEL' ? '#e11d48' : '#2563eb',
-      });
-
-      onSelectAgent(created);
-      setShowCreateModal(false);
-      // Reset form
-      setNewBusinessName('');
-      setNewAgentName('');
-      setNewAgentPhone('');
-    } catch (err) {
-      console.error('Failed to create agent:', err);
-    } finally {
-      setIsCreatingAgent(false);
-    }
+  const handleCopyShareLink = () => {
+    if (!currentAgent) return;
+    const link = `${window.location.origin}?agentId=${currentAgent.id}`;
+    navigator.clipboard.writeText(link);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+    addToast('info', 'Agent Link Copied', 'Share this link with customers to earn direct commission on sales.');
   };
 
-  if (!currentAgent) {
+  if (agents.length === 0) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-16 text-center">
-        <p className="text-slate-400">Loading sub-merchants from cloud storage...</p>
+      <div className="max-w-4xl mx-auto py-12 px-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-4 shadow-xl">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400">
+            <Users className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-white">No Sub-Merchant Resellers Created Yet</h2>
+          <p className="text-sm text-slate-400 max-w-md mx-auto">
+            Sub-merchant reseller accounts are created exclusively by the Administrator. Once registered in the Operations Console, resellers can track their sales and cash out commissions here.
+          </p>
+          {onNavigateToTab && (
+            <button
+              id="goto-admin-to-create-agent-btn"
+              type="button"
+              onClick={() => onNavigateToTab('admin')}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all shadow-md active:scale-95 cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Go to Admin Console to Create Agent</span>
+            </button>
+          )}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Top Banner: Sub-Merchant Selection & Create Button */}
-      <div className="bg-slate-950/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/20 text-emerald-400 text-xs font-semibold">
-              <Database className="w-3.5 h-3.5" />
-              <span>Dedicated Sub-Merchant Firestore Database Storage</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-['Outfit']">
-              Sub-Merchant & Agent Portal
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-300">
-              Manage your telecom business, monitor your dedicated database, share your custom storefront, and withdraw 10% commissions.
-            </p>
+    <div className="max-w-6xl mx-auto space-y-6">
+      {/* Header Bar with Sub-Merchant Switcher */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-400 mb-1">
+            <Users className="w-4 h-4" />
+            Sub-Merchant Reseller Network
           </div>
-
-          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-            {/* Switch Sub-Merchant Dropdown */}
-            <div className="relative">
-              <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-                Active Sub-Merchant:
-              </label>
-              <select
-                id="agent-switcher-select"
-                value={currentAgent.id}
-                onChange={(e) => {
-                  const target = agents.find((a) => a.id === e.target.value);
-                  if (target) onSelectAgent(target);
-                }}
-                className="px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-400"
-              >
-                {agents.map((ag) => (
-                  <option key={ag.id} value={ag.id}>
-                    {ag.businessName} ({ag.phone} - {ag.network})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Create New Sub-Merchant Button */}
-            <div className="self-end">
-              <button
-                id="create-sub-merchant-btn"
-                onClick={() => setShowCreateModal(true)}
-                className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all cursor-pointer"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>Create New Sub-Merchant</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Real-time Firestore Listener Live Alert Bar */}
-      <div
-        id="firestore-realtime-listener-bar"
-        className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/30 border border-amber-500/30 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
-      >
-        <div className="flex items-center gap-3">
-          <div className="relative flex h-3.5 w-3.5 shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5 font-['Outfit']">
-                <span>Real-Time Firestore Agent Listener</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
-                  LIVE STREAM
-                </span>
-              </h3>
-            </div>
-            <p className="text-[11px] text-slate-300 mt-0.5">
-              Listening to <span className="font-mono text-amber-300 font-semibold">{currentAgent.businessName}</span> transactions. Receive instant celebration toasts &amp; 10% commission chimes when orders succeed.
-            </p>
-          </div>
+          <h2 className="text-xl font-bold text-white">
+            {currentAgent ? currentAgent.businessName : 'Select Sub-Merchant Outlet'}
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Agent: {currentAgent?.name} • ID: <span className="font-mono text-slate-300">{currentAgent?.id}</span> • Rate: <span className="text-amber-400 font-bold">{currentAgent?.commissionRate}%</span>
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
-          {/* Audio Chime Toggle */}
-          <button
-            id="toggle-chime-sound-btn"
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition-all ${
-              soundEnabled
-                ? 'bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border-amber-400/30 shadow-sm'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-700'
-            }`}
-            title={soundEnabled ? 'Chime sound is enabled for live completed sales' : 'Chime sound is muted'}
-          >
-            {soundEnabled ? (
-              <>
-                <Volume2 className="w-3.5 h-3.5 text-amber-400" />
-                <span>Chime Sound: ON</span>
-              </>
-            ) : (
-              <>
-                <VolumeX className="w-3.5 h-3.5 text-slate-400" />
-                <span>Chime Sound: OFF</span>
-              </>
-            )}
-          </button>
-
-          {/* Test Audio Chime */}
-          <button
-            id="test-chime-btn"
-            onClick={playNotificationChime}
-            className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Play sample harmonic chime"
-          >
-            <Bell className="w-3.5 h-3.5 text-amber-400" />
-            <span>Test Chime</span>
-          </button>
-        </div>
-      </div>
-
-      {withdrawSuccessMsg && (
-        <div className="p-4 rounded-2xl bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs flex items-center justify-between gap-3 animate-fadeIn">
-          <div className="flex items-center gap-2.5">
-            <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
-            <span>{withdrawSuccessMsg}</span>
-          </div>
-          <button
-            onClick={() => setWithdrawSuccessMsg('')}
-            className="text-xs text-slate-400 hover:text-white"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {/* Overview Analytics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Available Commission Balance (Highlight) */}
-        <div className="bg-gradient-to-br from-emerald-950/60 via-slate-900 to-slate-900 border-2 border-emerald-500/40 rounded-2xl p-5 shadow-xl relative overflow-hidden flex flex-col justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                10% Commission Balance
-              </span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                <Wallet className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-3xl font-black text-white font-['Outfit']">
-              GHS {currentAgent.availableCommissionBalance.toFixed(2)}
-            </p>
-            <p className="text-[11px] text-slate-400">
-              Ready for instant MoMo payout to <span className="font-mono text-emerald-300">{currentAgent.phone}</span>
-            </p>
-          </div>
-
-          <div className="pt-4 mt-2">
-            <button
-              id="withdraw-commission-btn"
-              onClick={() => {
-                setWithdrawAmount(currentAgent.availableCommissionBalance.toFixed(2));
-                setShowWithdrawModal(true);
-              }}
-              disabled={currentAgent.availableCommissionBalance <= 0}
-              className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
-                currentAgent.availableCommissionBalance > 0
-                  ? 'bg-emerald-400 hover:bg-emerald-300 text-slate-950 shadow-lg shadow-emerald-400/20 cursor-pointer'
-                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-              }`}
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>Withdraw to MoMo Number</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Total Lifetime Commission Earned */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Lifetime Earnings</span>
-              <div className="w-8 h-8 rounded-lg bg-amber-400/10 text-amber-400 flex items-center justify-center">
-                <TrendingUp className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-white font-['Outfit']">
-              GHS {currentAgent.totalCommissionEarned.toFixed(2)}
-            </p>
-            <p className="text-[11px] text-slate-400">Total cumulative 10% earned</p>
-          </div>
-          <div className="pt-3 border-t border-slate-800 text-[11px] text-amber-400 flex items-center gap-1 font-semibold">
-            <Sparkles className="w-3 h-3" />
-            <span>{currentAgent.commissionRate || 10}% Commission Tier</span>
-          </div>
-        </div>
-
-        {/* Total Sales Volume */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Total Sales Volume</span>
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
-                <DollarSign className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-white font-['Outfit']">
-              GHS {currentAgent.totalSalesVolume.toFixed(2)}
-            </p>
-            <p className="text-[11px] text-slate-400">Gross customer telecom sales</p>
-          </div>
-          <div className="pt-3 border-t border-slate-800 text-[11px] text-slate-400">
-            Across MTN, Telecel & AT
-          </div>
-        </div>
-
-        {/* Total Orders Count */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-400">Completed Orders</span>
-              <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-white font-['Outfit']">
-              {currentAgent.totalOrdersCount}
-            </p>
-            <p className="text-[11px] text-slate-400">Customer bundles & airtime</p>
-          </div>
-          <div className="pt-3 border-t border-slate-800 text-[11px] text-emerald-400 font-medium">
-            100% Routed via Hubtel
-          </div>
-        </div>
-      </div>
-
-      {/* Sub-Merchant Custom Storefront Link & WhatsApp Sharing */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-4">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-bold text-white font-['Outfit'] flex items-center gap-2">
-              <Share2 className="w-5 h-5 text-amber-400" />
-              <span>Your Unique Sub-Merchant Storefront Link</span>
-            </h3>
-            <p className="text-xs text-slate-300">
-              Give this link to your customers or post it on WhatsApp/Facebook. Every bundle they purchase will auto-credit 10% commission to you!
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleCopyStorefrontLink}
-              className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-400/20 transition-all cursor-pointer"
-            >
-              <Copy className="w-4 h-4" />
-              <span>{copySuccess ? 'Copied to Clipboard!' : 'Copy Storefront Link'}</span>
-            </button>
-
-            <a
-              href={`https://wa.me/?text=${encodeURIComponent(
-                `Hey! Buy cheap Ghana Data Bundles (MTN Non-Expiry, Telecel Bossu, AT Big Time) & Airtime instantly on my store: ${window.location.origin}/?agent=${currentAgent.slug}`
-              )}`}
-              target="_blank"
-              rel="noreferrer"
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all"
-            >
-              <span>Share on WhatsApp</span>
-            </a>
-          </div>
-        </div>
-
-        <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between text-xs font-mono text-amber-400 truncate">
-          <span className="truncate">{`${window.location.origin}/?agent=${currentAgent.slug || currentAgent.id}`}</span>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-400/10 text-amber-400 border border-amber-400/20 font-sans font-semibold ml-2">
-            Slug: {currentAgent.slug}
-          </span>
-        </div>
-      </div>
-
-      {/* View Switcher: Live Database vs Commission Analytics */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
         <div className="flex items-center gap-2">
-          <button
-            id="agent-tab-orders-btn"
-            onClick={() => setPortalSubTab('orders')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-              portalSubTab === 'orders'
-                ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
+          <select
+            value={currentAgent?.id}
+            onChange={(e) => {
+              const found = agents.find((a) => a.id === e.target.value);
+              if (found) onSelectAgent(found);
+            }}
+            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
           >
-            <Database className="w-3.5 h-3.5" />
-            <span>Dedicated Live Database (`agents/{currentAgent.id}/orders`)</span>
-          </button>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.businessName} ({a.name})
+              </option>
+            ))}
+          </select>
 
           <button
-            id="agent-tab-analytics-btn"
-            onClick={() => setPortalSubTab('analytics')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-              portalSubTab === 'analytics'
-                ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
+            onClick={handleCopyShareLink}
+            className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Copy Agent Referral Store Link"
           >
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>10% Commission Analytics & Forecasting</span>
+            {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4 text-amber-400" />}
+            <span className="hidden sm:inline">Storefront Link</span>
           </button>
         </div>
-
-        <span className="text-[11px] text-slate-500 hidden sm:inline">
-          Auto-synced with Firestore Sub-Collection
-        </span>
       </div>
 
-      {/* Render active sub-view */}
-      {portalSubTab === 'orders' ? (
-        <TransactionHistory
-          agentId={currentAgent.id}
-          agentName={currentAgent.businessName}
-          onViewReceipt={onViewReceipt}
-        />
-      ) : (
-        <CommissionAnalytics
-          agents={agents}
-          initialSelectedAgentId={currentAgent.id}
-        />
-      )}
+      {/* Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+        <button
+          onClick={() => setActiveTab('DASHBOARD')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'DASHBOARD'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+          }`}
+        >
+          Commission Dashboard
+        </button>
+        <button
+          onClick={() => setActiveTab('WITHDRAW')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'WITHDRAW'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+          }`}
+        >
+          Instant MoMo Cashout
+        </button>
+      </div>
 
-      {/* Commission Withdrawal Modal */}
-      {showWithdrawModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                  <Smartphone className="w-5 h-5" />
+      {/* TAB 1: DASHBOARD */}
+      {activeTab === 'DASHBOARD' && currentAgent && (
+        <div className="space-y-6">
+          {/* Key Metrics Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+              <div className="flex justify-between items-start">
+                <span className="text-xs font-bold text-slate-400 uppercase">Available Payout</span>
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                  <Wallet className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-white font-['Outfit']">Withdraw 10% Commission</h3>
-                  <p className="text-xs text-slate-400">Direct Mobile Money Disbursement</p>
+              </div>
+              <div className="mt-2 text-2xl font-extrabold text-emerald-400 font-sans">
+                GHS {currentAgent.availableCommissionBalance.toFixed(2)}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">Ready for instant Mobile Money transfer</p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+              <div className="flex justify-between items-start">
+                <span className="text-xs font-bold text-slate-400 uppercase">Total Earned</span>
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                  <TrendingUp className="w-5 h-5" />
                 </div>
               </div>
-              <button
-                onClick={() => setShowWithdrawModal(false)}
-                className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded bg-slate-800"
-              >
-                Cancel
-              </button>
+              <div className="mt-2 text-2xl font-extrabold text-amber-400 font-sans">
+                GHS {currentAgent.totalCommissionEarned.toFixed(2)}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">Lifetime commission revenue</p>
             </div>
 
-            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 text-xs">
-              <div className="flex justify-between text-slate-300">
-                <span>Beneficiary Agent:</span>
-                <span className="font-bold text-white">{currentAgent.name} ({currentAgent.businessName})</span>
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+              <div className="flex justify-between items-start">
+                <span className="text-xs font-bold text-slate-400 uppercase">Sales Volume</span>
+                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400">
+                  <Building2 className="w-5 h-5" />
+                </div>
               </div>
-              <div className="flex justify-between text-slate-300">
-                <span>MoMo Destination Number:</span>
-                <span className="font-mono font-bold text-emerald-400">{currentAgent.phone}</span>
+              <div className="mt-2 text-2xl font-extrabold text-white font-sans">
+                GHS {currentAgent.totalSalesVolume.toFixed(2)}
               </div>
-              <div className="flex justify-between text-slate-300">
-                <span>Telecom Network:</span>
-                <span className="font-semibold text-white">{currentAgent.network} Mobile Money</span>
-              </div>
-              <div className="flex justify-between text-slate-300">
-                <span>Available Balance:</span>
-                <span className="font-bold text-amber-400 font-mono">GHS {currentAgent.availableCommissionBalance.toFixed(2)}</span>
-              </div>
+              <p className="text-[11px] text-slate-500 mt-1">Carrier airtime & data sold</p>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300 block">
-                Amount to Disburse (GHS)
-              </label>
-              <input
-                id="withdraw-amount-input"
-                type="number"
-                max={currentAgent.availableCommissionBalance}
-                value={withdrawAmount}
-                onChange={(e) => setWithdrawAmount(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
-              />
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+              <div className="flex justify-between items-start">
+                <span className="text-xs font-bold text-slate-400 uppercase">Commission Split</span>
+                <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
+                  <Percent className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="mt-2 text-2xl font-extrabold text-white font-sans">
+                {currentAgent.commissionRate}%
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">{currentAgent.totalOrdersCount} subscriber orders completed</p>
+            </div>
+          </div>
+
+          {/* Realtime Commission Ledger Table */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-white">Recent Customer Purchases via Outlet</h3>
+                <p className="text-xs text-slate-400">Orders placed using {currentAgent.businessName}&apos;s referral link or channel</p>
+              </div>
+              <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full">
+                {agentOrders.length} Orders Logged
+              </span>
             </div>
 
-            {withdrawError && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{withdrawError}</span>
-              </div>
-            )}
-
-            <button
-              id="confirm-withdrawal-btn"
-              onClick={handleExecuteWithdrawal}
-              disabled={isWithdrawing || currentAgent.availableCommissionBalance <= 0}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-extrabold text-sm shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
-            >
-              {isWithdrawing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Disbursing via MoMo API...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4" />
-                  <span>Send GHS {Number(withdrawAmount || 0).toFixed(2)} to {currentAgent.phone}</span>
-                </>
-              )}
-            </button>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="border-b border-slate-800 text-slate-400">
+                  <tr>
+                    <th className="py-3 px-3">Order ID</th>
+                    <th className="py-3 px-3">Customer</th>
+                    <th className="py-3 px-3">Network & Product</th>
+                    <th className="py-3 px-3">Order Total</th>
+                    <th className="py-3 px-3 text-emerald-400">Your Commission</th>
+                    <th className="py-3 px-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {agentOrders.map((ord) => (
+                    <tr key={ord.id} className="hover:bg-slate-950/40">
+                      <td className="py-3 px-3 font-bold text-white">{ord.id}</td>
+                      <td className="py-3 px-3 text-slate-300">{ord.customerPhone}</td>
+                      <td className="py-3 px-3">
+                        <span className="font-bold text-amber-400 mr-1.5">{ord.network}</span>
+                        <span className="text-slate-200">{ord.packageName}</span>
+                      </td>
+                      <td className="py-3 px-3 font-bold text-white">GHS {ord.amountGhs.toFixed(2)}</td>
+                      <td className="py-3 px-3 font-bold text-emerald-400">
+                        +GHS {ord.commissionGhs.toFixed(2)}
+                      </td>
+                      <td className="py-3 px-3">
+                        {ord.paymentStatus === 'REFUNDED' ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 border border-purple-500/30 text-purple-400">
+                            REFUNDED
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                            {ord.deliveryStatus}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {agentOrders.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-400 text-xs font-sans">
+                        No orders attributed to this agent outlet yet. Share your store link to start earning commissions.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Create New Sub-Merchant Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white font-['Outfit']">Create New Sub-Merchant</h3>
-                  <p className="text-xs text-slate-400">Auto-provisions a dedicated Firestore database</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded bg-slate-800"
-              >
-                Cancel
-              </button>
+      {/* TAB 2: WITHDRAW */}
+      {activeTab === 'WITHDRAW' && currentAgent && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl max-w-lg mx-auto">
+          <div className="flex items-center gap-3 pb-4 border-b border-slate-800 mb-6">
+            <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400">
+              <ArrowDownToLine className="w-6 h-6" />
             </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Instant Mobile Money Payout</h3>
+              <p className="text-xs text-slate-400">
+                Current Available Balance: <strong className="text-emerald-400">GHS {currentAgent.availableCommissionBalance.toFixed(2)}</strong>
+              </p>
+            </div>
+          </div>
 
-            <form onSubmit={handleCreateAgent} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Business / Shop Name *</label>
+          <form onSubmit={handlePayout} className="space-y-4">
+            <div>
+              <label className="text-xs font-bold text-slate-300 block mb-1">Withdrawal Amount (GHS)</label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-2.5 text-xs text-slate-400 font-bold">GHS</span>
                 <input
-                  type="text"
+                  type="number"
+                  step="0.1"
+                  max={currentAgent.availableCommissionBalance}
                   required
-                  placeholder="e.g. Osu Telecom Express"
-                  value={newBusinessName}
-                  onChange={(e) => setNewBusinessName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-emerald-400 focus:outline-none"
+                  value={payoutAmount}
+                  onChange={(e) => setPayoutAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-12 pr-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
                 />
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Agent Full Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Kwabena Boateng"
-                    value={newAgentName}
-                    onChange={(e) => setNewAgentName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-emerald-400 focus:outline-none"
-                  />
-                </div>
+            <div>
+              <label className="text-xs font-bold text-slate-300 block mb-1">MoMo Wallet Phone Number</label>
+              <input
+                type="tel"
+                value={payoutMomoNumber}
+                onChange={(e) => setPayoutMomoNumber(e.target.value)}
+                placeholder={currentAgent.momoNumber || currentAgent.phone}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">Leave empty to use default registered number ({currentAgent.phone})</p>
+            </div>
 
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">MoMo Payout Phone *</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="e.g. 0244123456"
-                    value={newAgentPhone}
-                    onChange={(e) => setNewAgentPhone(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono focus:ring-2 focus:ring-emerald-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">MoMo Network</label>
-                  <select
-                    value={newAgentNetwork}
-                    onChange={(e) => setNewAgentNetwork(e.target.value as TelecomNetwork)}
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-emerald-400 focus:outline-none"
+            <div>
+              <label className="text-xs font-bold text-slate-300 block mb-1">Payout MoMo Network</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['MTN', 'TELECEL', 'AIRTELTIGO'] as TelecomNetwork[]).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setPayoutNetwork(n)}
+                    className={`py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+                      payoutNetwork === n
+                        ? 'border-amber-500 bg-amber-500/10 text-amber-400'
+                        : 'border-slate-800 bg-slate-950 text-slate-400 hover:text-white'
+                    }`}
                   >
-                    <option value="MTN">MTN MoMo</option>
-                    <option value="TELECEL">Telecel Cash</option>
-                    <option value="AT">AT Money</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Commission Rate (%)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
-                    value={newAgentCommission}
-                    onChange={(e) => setNewAgentCommission(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono focus:ring-2 focus:ring-emerald-400 focus:outline-none"
-                  />
-                </div>
+                    {n}
+                  </button>
+                ))}
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Agent Email (Login)</label>
-                  <input
-                    type="email"
-                    placeholder="agent@ghanatelecom.gh"
-                    value={newAgentEmail}
-                    onChange={(e) => setNewAgentEmail(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white focus:ring-2 focus:ring-emerald-400 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">4-Digit Access PIN</label>
-                  <input
-                    type="password"
-                    maxLength={4}
-                    value={newAgentPin}
-                    onChange={(e) => setNewAgentPin(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white font-mono text-center tracking-widest focus:ring-2 focus:ring-emerald-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isCreatingAgent}
-                className="w-full mt-2 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-sm shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
-              >
-                {isCreatingAgent ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Provisioning Sub-Merchant Firestore Schema...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Create & Activate Sub-Merchant</span>
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
+            <button
+              type="submit"
+              disabled={isWithdrawing || currentAgent.availableCommissionBalance <= 0}
+              className="w-full mt-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 cursor-pointer"
+            >
+              {isWithdrawing ? 'Processing MoMo Transfer...' : 'Confirm Instant Cashout'}
+            </button>
+          </form>
         </div>
       )}
     </div>
